@@ -26,9 +26,11 @@ func InitDB() {
 		port,
 	)
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true, // ✅ ปิด Foreign Key Constraint ตอน Migration
+	})
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 
 	fmt.Println("✅ Database connected successfully!")

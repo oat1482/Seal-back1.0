@@ -6,7 +6,8 @@ import (
 )
 
 func SetupUserRoutes(app *fiber.App, userController *controller.UserController) {
-	user := app.Group("/users")
+	api := app.Group("/api") // ✅ แก้เป็น /api
+	user := api.Group("/users")
 
 	user.Get("/:username", userController.GetUserHandler)
 	user.Post("/", userController.CreateUserHandler)
