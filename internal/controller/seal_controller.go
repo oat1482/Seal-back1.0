@@ -19,9 +19,101 @@ func NewSealController(sealService *service.SealService) *SealController {
 	return &SealController{sealService: sealService}
 }
 
+// ✅ สแกนบาร์โค้ด (ตรวจสอบซิลจากเลขบาร์โค้ด)
+func (sc *SealController) ScanSealHandler(c *fiber.Ctx) error {
+	var request struct {
+		SealNumber string `json:"seal_number"`
+	}
+
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	seal, err := sc.sealService.GetSealByNumber(request.SealNumber)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Seal scanned successfully",
+		"seal":    seal,
+	})
+}
+
+// ✅ ดึงข้อมูลซิลทั้งหมด
+func (sc *SealController) GetSealReportHandler(c *fiber.Ctx) error {
+	report, err := sc.sealService.GetSealReport()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate report"})
+	}
+	return c.JSON(report)
+}
+
+// ✅ ดึงข้อมูลซิลตามหมายเลข
+func (sc *SealController) GetSealHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+
+	seal, err := sc.sealService.GetSealByNumber(sealNumber)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
+	}
+
+	return c.JSON(seal)
+}
+
+// ✅ ออกซิลให้พนักงาน
+func (sc *SealController) IssueSealHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+
+	userID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	err := sc.sealService.IssueSeal(sealNumber, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Seal issued successfully"})
+}
+
+// ✅ ใช้ซิล
+func (sc *SealController) UseSealHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+
+	userID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	err := sc.sealService.UseSeal(sealNumber, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Seal used successfully"})
+}
+
+// ✅ คืนซิล
+func (sc *SealController) ReturnSealHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+
+	userID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	err := sc.sealService.ReturnSeal(sealNumber, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Seal returned successfully"})
+}
+
 // ✅ Generate new seals in bulk (Admin only)
 func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
-	// ✅ Extract user_id and role from authentication middleware
 	userID, ok := c.Locals("user_id").(uint)
 	role, roleOk := c.Locals("role").(string)
 
@@ -29,7 +121,6 @@ func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied, admin only"})
 	}
 
-	// ✅ Extract count from request body
 	var request struct {
 		Count int `json:"count"`
 	}
@@ -37,7 +128,6 @@ func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid count"})
 	}
 
-	// ✅ Call service to generate and create seals
 	seals, err := sc.sealService.GenerateAndCreateSeals(request.Count, userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -47,27 +137,22 @@ func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 }
 
 func (sc *SealController) CreateSealHandler(c *fiber.Ctx) error {
-	// ✅ Extract user_id (Allow User & Admin)
 	userID, ok := c.Locals("user_id").(uint)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
-	// ✅ หาเลข Seal ล่าสุดใน Database
 	latestSealNumber, err := sc.sealService.GetLatestSealNumber()
 	if err != nil {
 		log.Println("❌ [CreateSealHandler] Error fetching latest seal:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Cannot fetch latest seal"})
 	}
 
-	// ✅ ถ้ายังไม่มีเลข Seal ในระบบ ให้เริ่มจาก `16200000000000000`
 	nextSealNumber := "16200000000000000"
 	if latestSealNumber != "" {
-		// ✅ สร้างเลขใหม่โดยบวกค่าเพิ่มทีละ 1
 		nextSealNumber = incrementSealNumber(latestSealNumber)
 	}
 
-	// ✅ สร้าง Seal ใหม่
 	newSeal := &model.Seal{
 		SealNumber: nextSealNumber,
 		Status:     "available",
@@ -96,6 +181,6 @@ func incrementSealNumber(current string) string {
 		return current
 	}
 
-	num++                            // ✅ บวกค่าเพิ่ม 1
-	return fmt.Sprintf("%017d", num) // ✅ ใช้ %017d เพื่อให้ได้ 17 หลักเสมอ
+	num++
+	return fmt.Sprintf("%017d", num)
 }

@@ -39,6 +39,11 @@ func (s *SealService) GetLatestSealNumber() (string, error) {
 	return latestSeal.SealNumber, nil
 }
 
+// ✅ ค้นหาซิลตามหมายเลข
+func (s *SealService) GetSealByNumber(sealNumber string) (*model.Seal, error) {
+	return s.repo.FindByNumber(sealNumber)
+}
+
 // ✅ สร้างซิลใหม่
 func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 	existingSeal, _ := s.repo.FindByNumber(seal.SealNumber)
@@ -56,7 +61,6 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 			return err
 		}
 
-		// ✅ Log: "User X created seal Y"
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Created seal %s", seal.SealNumber),
@@ -67,13 +71,11 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 
 // ✅ สร้างซิลหลายตัวพร้อมกัน (Bulk Insert)
 func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Seal, error) {
-	// ✅ ดึงเลขล่าสุดจากฐานข้อมูล
 	latestSealNumber, err := s.GetLatestSealNumber()
 	if err != nil {
 		return nil, err
 	}
 
-	// ✅ สร้างเลขซิลชุดใหม่ (17 หลัก ไม่มีตัวอักษร)
 	sealNumbers, err := GenerateNextSealNumbers(latestSealNumber, count)
 	if err != nil {
 		return nil, err
@@ -96,7 +98,6 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 			return err
 		}
 
-		// ✅ Log การสร้างซิล
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Generated %d seals", count),
@@ -111,9 +112,92 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 	return seals, nil
 }
 
+// ✅ ออกซิลให้พนักงาน
+func (s *SealService) IssueSeal(sealNumber string, userID uint) error {
+	return s.UpdateSealStatus(sealNumber, "issued", userID)
+}
+
+// ✅ ใช้ซิล
+func (s *SealService) UseSeal(sealNumber string, userID uint) error {
+	return s.UpdateSealStatus(sealNumber, "used", userID)
+}
+
+// ✅ คืนซิล
+func (s *SealService) ReturnSeal(sealNumber string, userID uint) error {
+	return s.UpdateSealStatus(sealNumber, "returned", userID)
+}
+
+// ✅ อัปเดตสถานะของซิล (Issue, Use, Return)
+func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID uint) error {
+	seal, err := s.repo.FindByNumber(sealNumber)
+	if err != nil {
+		return errors.New("seal not found")
+	}
+
+	now := time.Now()
+
+	switch status {
+	case "issued":
+		if seal.Status != "available" {
+			return errors.New("only available seals can be issued")
+		}
+		seal.Status = "issued"
+		seal.IssuedBy = &userID
+		seal.IssuedAt = &now
+	case "used":
+		if seal.Status != "issued" {
+			return errors.New("only issued seals can be used")
+		}
+		seal.Status = "used"
+		seal.UsedBy = &userID
+		seal.UsedAt = &now
+	case "returned":
+		if seal.Status != "used" {
+			return errors.New("only used seals can be returned")
+		}
+		seal.Status = "returned"
+		seal.ReturnedBy = &userID
+		seal.ReturnedAt = &now
+	default:
+		return errors.New("invalid status update")
+	}
+
+	return s.repo.Update(seal)
+}
+
+// ✅ รายงานสถานะของซิลทั้งหมด
+func (s *SealService) GetSealReport() (map[string]interface{}, error) {
+	var total, available, issued, used, returned int64
+
+	if err := s.db.Model(&model.Seal{}).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "available").Count(&available).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "issued").Count(&issued).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "used").Count(&used).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "returned").Count(&returned).Error; err != nil {
+		return nil, err
+	}
+
+	report := map[string]interface{}{
+		"total_seals": total,
+		"available":   available,
+		"issued":      issued,
+		"used":        used,
+		"returned":    returned,
+	}
+
+	return report, nil
+}
+
 // ✅ ฟังก์ชัน GenerateNextSealNumbers หาเลขซิลล่าสุดแล้วรันต่อ
 func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
-	// ✅ ถ้ายังไม่มีเลขซิลในระบบ ใช้เลขเริ่มต้น 17 หลัก
 	if latest == "" {
 		latest = "00000000000000001"
 	}
@@ -122,7 +206,6 @@ func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 		return nil, errors.New("invalid seal number format")
 	}
 
-	// ✅ แปลง string เป็น int64 เพื่อรองรับเลข 17 หลัก
 	lastInt, err := strconv.ParseInt(latest, 10, 64)
 	if err != nil {
 		return nil, errors.New("invalid seal number format")
@@ -131,7 +214,7 @@ func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	sealNumbers := []string{}
 	for i := 1; i <= count; i++ {
 		newNum := lastInt + int64(i)
-		sealNumbers = append(sealNumbers, fmt.Sprintf("%017d", newNum)) // ✅ ใช้ %017d เพื่อให้ได้ 17 หลักเสมอ
+		sealNumbers = append(sealNumbers, fmt.Sprintf("%017d", newNum))
 	}
 
 	return sealNumbers, nil

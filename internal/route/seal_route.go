@@ -16,15 +16,21 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 	// ✅ Admin เท่านั้น สามารถ Generate ซิลชุดใหญ่ได้
 	seal.Post("/generate", middleware.JWTMiddleware(), sealController.GenerateSealsHandler)
 
+	// ✅ สแกนบาร์โค้ดเพื่อดึงข้อมูลซิล
+	seal.Post("/scan", middleware.JWTMiddleware(), sealController.ScanSealHandler)
+
+	// ✅ รายงานสถานะซิล (Admin เท่านั้น)
+	seal.Get("/report", middleware.JWTMiddleware(), sealController.GetSealReportHandler)
+
 	// ✅ ทุกคนสามารถอ่านข้อมูลซิลได้
-	// seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
+	seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
 
 	// ✅ Admin เท่านั้น สามารถออกซิลให้ User ได้
-	// seal.Put("/:seal_number/issue", middleware.JWTMiddleware(), sealController.IssueSealHandler)
+	seal.Put("/:seal_number/issue", middleware.JWTMiddleware(), sealController.IssueSealHandler)
 
 	// ✅ User ใช้ซิลที่ออกให้แล้ว
-	// seal.Put("/:seal_number/use", middleware.JWTMiddleware(), sealController.UseSealHandler)
+	seal.Put("/:seal_number/use", middleware.JWTMiddleware(), sealController.UseSealHandler)
 
 	// ✅ User คืนซิลหลังจากใช้งาน
-	// seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
+	seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
 }
