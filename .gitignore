@@ -1,5 +1,5 @@
-# Ignore all .env files
-**/.env
+# Ignore environment files
+.env
 
-# Ignore all database.go files
-**/database.go
+# Ignore database configuration file
+internal/config/database.go
