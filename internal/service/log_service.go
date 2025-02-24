@@ -15,7 +15,7 @@ func NewLogService(repo *repository.LogRepository) *LogService {
 	return &LogService{repo: repo}
 }
 
-// บันทึก Log
+// ✅ บันทึก Log
 func (s *LogService) CreateLog(userID uint, action string) error {
 	if userID == 0 || action == "" {
 		return errors.New("missing required fields")
@@ -27,7 +27,12 @@ func (s *LogService) CreateLog(userID uint, action string) error {
 	return s.repo.Create(&log)
 }
 
-// ดึง Log ทั้งหมด
+// ✅ ดึง Log ทั้งหมด (แบบเดิม)
 func (s *LogService) GetAllLogs() ([]model.Log, error) {
 	return s.repo.GetAll()
+}
+
+// ✅ ดึง Logs พร้อมข้อมูลของ Users
+func (s *LogService) GetLogsWithUsers() ([]map[string]interface{}, error) {
+	return s.repo.GetLogsWithUsers()
 }

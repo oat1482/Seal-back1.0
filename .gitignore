@@ -1,31 +1,5 @@
-# Environment files
-.env
-internal/config/.env
+# Ignore all .env files
+**/.env
 
-# Compiled binaries
-*.exe
-*.out
-*.bin
-
-# Logs and cache
-*.log
-cache/
-tmp/
-
-# Database files (for SQLite or MS SQL Server)
-*.db
-*.sqlite
-*.mdf
-*.ldf
-*.bak
-
-# Vendor and dependencies
-vendor/
-pkg/
-
-# Node.js dependencies (if any frontend)
-node_modules/
-
-# Docker/Kubernetes
-docker-compose.override.yml
-.kube/
+# Ignore all database.go files
+**/database.go

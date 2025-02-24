@@ -61,6 +61,7 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 			return err
 		}
 
+		// ✅ เพิ่ม Log สำหรับการสร้างซิล
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Created seal %s", seal.SealNumber),
@@ -98,6 +99,7 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 			return err
 		}
 
+		// ✅ เพิ่ม Log สำหรับการสร้างซิลแบบ Bulk
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Generated %d seals", count),
@@ -135,6 +137,7 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 	}
 
 	now := time.Now()
+	logAction := ""
 
 	switch status {
 	case "issued":
@@ -144,6 +147,8 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.Status = "issued"
 		seal.IssuedBy = &userID
 		seal.IssuedAt = &now
+		logAction = fmt.Sprintf("Issued seal %s", sealNumber)
+
 	case "used":
 		if seal.Status != "issued" {
 			return errors.New("only issued seals can be used")
@@ -151,6 +156,8 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.Status = "used"
 		seal.UsedBy = &userID
 		seal.UsedAt = &now
+		logAction = fmt.Sprintf("Used seal %s", sealNumber)
+
 	case "returned":
 		if seal.Status != "used" {
 			return errors.New("only used seals can be returned")
@@ -158,11 +165,25 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.Status = "returned"
 		seal.ReturnedBy = &userID
 		seal.ReturnedAt = &now
+		logAction = fmt.Sprintf("Returned seal %s", sealNumber)
+
 	default:
 		return errors.New("invalid status update")
 	}
 
-	return s.repo.Update(seal)
+	// ✅ บันทึก Log และอัปเดตซิลใน transaction
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.Update(seal); err != nil {
+			return err
+		}
+
+		// ✅ เพิ่ม Log สำหรับการเปลี่ยนแปลงสถานะ
+		logEntry := model.Log{
+			UserID: userID,
+			Action: logAction,
+		}
+		return s.logRepo.Create(&logEntry)
+	})
 }
 
 // ✅ รายงานสถานะของซิลทั้งหมด

@@ -43,6 +43,12 @@ func JWTMiddleware() fiber.Handler {
 			})
 		}
 
+		// ✅ Ensure role is set in Context
+		if user.Role == "" {
+			log.Println("🚨 [JWTMiddleware] Role is missing from token")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token: missing role"})
+		}
+
 		log.Printf("✅ [JWTMiddleware] User Verified: ID=%d, Role=%s, Name=%s %s, PEA Code=%s\n",
 			user.EmpID, user.Role, user.FirstName, user.LastName, user.PeaCode)
 
@@ -51,10 +57,20 @@ func JWTMiddleware() fiber.Handler {
 	}
 }
 
+// ✅ Middleware: Allow only Admins
+func AdminOnlyMiddleware(c *fiber.Ctx) error {
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "admin" {
+		log.Println("🚨 Access Denied: Admins Only")
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied. Admins only"})
+	}
+	return c.Next()
+}
+
 // ✅ ฟังก์ชันช่วยเซ็ตค่า User Context ใน Fiber
 func setUserContext(c *fiber.Ctx, user *model.User) {
 	c.Locals("user_id", user.EmpID)
-	c.Locals("role", user.Role)
+	c.Locals("role", user.Role) // ✅ Role is always set now
 	c.Locals("first_name", user.FirstName)
 	c.Locals("last_name", user.LastName)
 

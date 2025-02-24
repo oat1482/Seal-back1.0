@@ -11,6 +11,7 @@ import (
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/domain/repository"
 	migration "github.com/Kev2406/PEA/internal/infrastructure/database"
+	"github.com/Kev2406/PEA/internal/middleware"
 	"github.com/Kev2406/PEA/internal/route"
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
@@ -30,7 +31,7 @@ func generateToken(user *model.User) (string, error) {
 		"last_name":  user.LastName,
 		"username":   user.Username,
 		"email":      user.Email,
-		"exp":        time.Now().Add(24 * time.Hour).Unix(), // หมดอายุใน 24 ชม.
+		"exp":        time.Now().Add(24 * time.Hour).Unix(),
 		"pea_code":   user.PeaCode,
 		"pea_short":  user.PeaShort,
 		"pea_name":   user.PeaName,
@@ -41,12 +42,12 @@ func generateToken(user *model.User) (string, error) {
 }
 
 func main() {
-	// Load .env if available
+	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: No .env file found. Using system environment variables.")
 	}
 
-	// Initialize the database connection
+	// Initialize the database
 	config.InitDB()
 
 	log.Println("🔧 Running database migrations...")
@@ -55,8 +56,11 @@ func main() {
 	}
 	log.Println("✅ Migrations completed!")
 
-	//Create the Fiber app
+	// Create Fiber app
 	app := fiber.New()
+
+	// Apply authentication middleware globally (Every API requires JWT)
+	app.Use(middleware.JWTMiddleware())
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(config.DB)
@@ -67,6 +71,7 @@ func main() {
 	// Initialize services
 	userService := service.NewUserService(userRepo)
 	sealService := service.NewSealService(sealRepo, transactionRepo, logRepo, config.DB)
+	logService := service.NewLogService(logRepo)
 
 	// Admin user to be created or verified
 	adminUser := &model.User{
@@ -77,10 +82,9 @@ func main() {
 		Username:  "admin_test",
 		Email:     "admin_test@pea.co.th",
 		Role:      "admin",
-
-		PeaCode:  "F01101",
-		PeaShort: "FNRM",
-		PeaName:  "กฟจ.นครราชสีมา",
+		PeaCode:   "F01101",
+		PeaShort:  "FNRM",
+		PeaName:   "กฟจ.นครราชสีมา",
 	}
 
 	// Check if admin already exists
@@ -105,11 +109,9 @@ func main() {
 		Username:  "user_test",
 		Email:     "user_test@pea.co.th",
 		Role:      "user",
-
-		// ✅ Added PEA Code info
-		PeaCode:  "F02101",
-		PeaShort: "FCYP",
-		PeaName:  "กฟจ.ชัยภูมิ",
+		PeaCode:   "F02101",
+		PeaShort:  "FCYP",
+		PeaName:   "กฟจ.ชัยภูมิ",
 	}
 
 	// Check if normal user already exists
@@ -134,18 +136,22 @@ func main() {
 	// Create controllers
 	userController := controller.NewUserController(userService)
 	sealController := controller.NewSealController(sealService)
+	logController := controller.NewLogController(logService)
 
-	// Set up routes
+	// Setup routes (Protected by JWT)
 	route.SetupUserRoutes(app, userController)
 	route.SetupSealRoutes(app, sealController)
 
-	// Determine server port
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000" // Default port
-	}
+	// ✅ Log API is restricted to Admins only
+	app.Use("/logs", middleware.AdminOnlyMiddleware)
+	route.SetupLogRoutes(app, logController)
 
 	// Start the server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+
 	fmt.Printf("🚀 Server is running on http://localhost:%s\n", port)
 	log.Fatal(app.Listen(":" + port))
 }
