@@ -70,7 +70,7 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 	})
 }
 
-// ✅ สร้างซิลหลายตัวพร้อมกัน (Bulk Insert)
+// ✅ สร้างซิลหลายตัวพร้อมกัน (Bulk Insert) แบบ Auto-Generate จากเลขล่าสุด
 func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Seal, error) {
 	latestSealNumber, err := s.GetLatestSealNumber()
 	if err != nil {
@@ -103,6 +103,49 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Generated %d seals", count),
+		}
+		return s.logRepo.Create(&logEntry)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return seals, nil
+}
+
+// ✅ สร้างซิลหลายตัวพร้อมกัน (Bulk Insert) โดยรับเลขเริ่มต้นจากผู้ใช้หรือจากการ Scan
+func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string, count int, userID uint) ([]model.Seal, error) {
+	if len(startingSealNumber) != 17 {
+		return nil, errors.New("invalid starting seal number format")
+	}
+
+	sealNumbers, err := GenerateNextSealNumbers(startingSealNumber, count)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	seals := make([]model.Seal, count)
+
+	for i, sn := range sealNumbers {
+		seals[i] = model.Seal{
+			SealNumber: sn,
+			Status:     "available",
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+	}
+
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.CreateMultiple(seals); err != nil {
+			return err
+		}
+
+		// ✅ เพิ่ม Log สำหรับการสร้างซิลแบบ Bulk จากเลขที่กำหนด
+		logEntry := model.Log{
+			UserID: userID,
+			Action: fmt.Sprintf("Generated %d seals from starting number %s", count, startingSealNumber),
 		}
 		return s.logRepo.Create(&logEntry)
 	})
@@ -148,7 +191,6 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.IssuedBy = &userID
 		seal.IssuedAt = &now
 		logAction = fmt.Sprintf("Issued seal %s", sealNumber)
-
 	case "used":
 		if seal.Status != "issued" {
 			return errors.New("only issued seals can be used")
@@ -157,7 +199,6 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.UsedBy = &userID
 		seal.UsedAt = &now
 		logAction = fmt.Sprintf("Used seal %s", sealNumber)
-
 	case "returned":
 		if seal.Status != "used" {
 			return errors.New("only used seals can be returned")
@@ -166,7 +207,6 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 		seal.ReturnedBy = &userID
 		seal.ReturnedAt = &now
 		logAction = fmt.Sprintf("Returned seal %s", sealNumber)
-
 	default:
 		return errors.New("invalid status update")
 	}
@@ -217,7 +257,7 @@ func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 	return report, nil
 }
 
-// ✅ ฟังก์ชัน GenerateNextSealNumbers หาเลขซิลล่าสุดแล้วรันต่อ
+// ✅ ฟังก์ชัน GenerateNextSealNumbers หาเลขซิลล่าสุดหรือเลขเริ่มต้นแล้วรันต่อ
 func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	if latest == "" {
 		latest = "00000000000000001"

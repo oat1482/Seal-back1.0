@@ -57,11 +57,10 @@ func JWTMiddleware() fiber.Handler {
 	}
 }
 
-// ✅ Middleware: Allow only Admins
 func AdminOnlyMiddleware(c *fiber.Ctx) error {
+	log.Printf("Role from c.Locals('role'): %v", c.Locals("role"))
 	role, ok := c.Locals("role").(string)
 	if !ok || role != "admin" {
-		log.Println("🚨 Access Denied: Admins Only")
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied. Admins only"})
 	}
 	return c.Next()
