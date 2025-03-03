@@ -33,25 +33,20 @@ func NewSealService(
 	}
 }
 
-// ✅ ดึงเลขซิลล่าสุดจากฐานข้อมูล
 func (s *SealService) GetLatestSealNumber() (string, error) {
 	latestSeal, err := s.repo.GetLatestSeal()
 	if err != nil {
 		return "", err
 	}
 	if latestSeal == nil {
-		// เปลี่ยนเป็น Default ที่มี Prefix "F" หรือค่าใดก็ได้
 		return "F000000000001", nil
 	}
 	return latestSeal.SealNumber, nil
 }
-
-// ✅ ค้นหาซิลตามหมายเลข
 func (s *SealService) GetSealByNumber(sealNumber string) (*model.Seal, error) {
 	return s.repo.FindByNumber(sealNumber)
 }
 
-// ✅ สร้างซิลใหม่
 func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 	existingSeal, _ := s.repo.FindByNumber(seal.SealNumber)
 	if existingSeal != nil {
@@ -68,7 +63,6 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 			return err
 		}
 
-		// ✅ เพิ่ม Log สำหรับการสร้างซิล
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("Created seal %s", seal.SealNumber),
@@ -117,17 +111,11 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 	return seals, nil
 }
 
-// ✅ สร้างซิลหลายตัวพร้อมกัน (Bulk Insert) โดยรับเลขเริ่มต้นจากผู้ใช้ (ไม่บังคับต้อง 17 หลักอีกต่อไป)
 func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string, count int, userID uint) ([]model.Seal, error) {
-	// ❌ ลบเงื่อนไขบังคับ 17 หลัก
-	// if len(startingSealNumber) != 17 {
-	// 	return nil, errors.New("invalid starting seal number format")
-	// }
 
-	// ✅ ใช้ฟังก์ชัน GenerateNextSealNumbers แบบใหม่ ที่ตรวจด้วย Regex แทน
 	sealNumbers, err := GenerateNextSealNumbers(startingSealNumber, count)
 	if err != nil {
-		// เช่น regex ไม่แมตช์ => "invalid seal number format"
+
 		return nil, err
 	}
 
@@ -159,61 +147,57 @@ func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string
 	return seals, nil
 }
 
-// ✅ ออกซิลให้พนักงาน
 func (s *SealService) IssueSeal(sealNumber string, userID uint) error {
 	return s.UpdateSealStatus(sealNumber, "issued", userID)
 }
 
-// ✅ ใช้ซิล
 func (s *SealService) UseSeal(sealNumber string, userID uint) error {
 	return s.UpdateSealStatus(sealNumber, "used", userID)
 }
 
-// ✅ คืนซิล
 func (s *SealService) ReturnSeal(sealNumber string, userID uint) error {
 	return s.UpdateSealStatus(sealNumber, "returned", userID)
 }
 
-// ✅ อัปเดตสถานะของซิล (Issue, Use, Return)
 func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID uint) error {
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
-		return errors.New("seal not found")
+		return errors.New("ไม่พบหมายเลขซิล")
 	}
 
 	now := time.Now()
 	logAction := ""
 
 	switch status {
-	case "issued":
-		if seal.Status != "available" {
-			return errors.New("only available seals can be issued")
+	case "ออกให้แล้ว":
+		if seal.Status != "พร้อมใช้งาน" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'พร้อมใช้งาน' เท่านั้นจึงจะออกให้ได้")
 		}
-		seal.Status = "issued"
+		seal.Status = "เบิกแล้ว"
 		seal.IssuedBy = &userID
 		seal.IssuedAt = &now
-		logAction = fmt.Sprintf("Issued seal %s", sealNumber)
+		logAction = fmt.Sprintf("ออกซิลหมายเลข %s", sealNumber)
 
-	case "used":
-		if seal.Status != "issued" {
-			return errors.New("only issued seals can be used")
+	case "จ่ายซิลแล้ว":
+		if seal.Status != "เบิกแล้ว" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'เบิกแล้ว' เท่านั้นจึงจะจ่ายซิลได้")
 		}
-		seal.Status = "used"
+		seal.Status = "จ่ายซิลแล้ว"
 		seal.UsedBy = &userID
 		seal.UsedAt = &now
-		logAction = fmt.Sprintf("Used seal %s", sealNumber)
+		logAction = fmt.Sprintf("จ่ายซิลหมายเลข %s", sealNumber)
 
-	case "returned":
-		if seal.Status != "used" {
-			return errors.New("only used seals can be returned")
+	case "คืนแล้ว":
+		if seal.Status != "จ่ายซิลแล้ว" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'จ่ายซิลแล้ว' เท่านั้นจึงจะคืนได้")
 		}
-		seal.Status = "returned"
+		seal.Status = "คืนแล้ว"
 		seal.ReturnedBy = &userID
 		seal.ReturnedAt = &now
-		logAction = fmt.Sprintf("Returned seal %s", sealNumber)
+		logAction = fmt.Sprintf("คืนซิลหมายเลข %s", sealNumber)
 
 	default:
-		return errors.New("invalid status update")
+		return errors.New("สถานะที่ระบุไม่ถูกต้อง")
 	}
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
@@ -228,7 +212,6 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 	})
 }
 
-// ✅ รายงานสถานะของซิลทั้งหมด
 func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 	var total, available, issued, used, returned int64
 
@@ -258,10 +241,9 @@ func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 	return report, nil
 }
 
-// ✅ GenerateNextSealNumbers รองรับตัวอักษรนำหน้า ไม่ฟิก 17 หลัก
 func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	if latest == "" {
-		latest = "F000000000001" // ค่า default ถ้ายังไม่ได้เซ็ต
+		latest = "F000000000001"
 	}
 
 	re := regexp.MustCompile(`^([A-Za-z]*)(\d+)$`)
@@ -270,8 +252,8 @@ func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 		return nil, errors.New("invalid seal number format")
 	}
 
-	prefix := matches[1]     // เช่น "F"
-	numberPart := matches[2] // เช่น "000000000001"
+	prefix := matches[1]
+	numberPart := matches[2]
 	lastInt, err := strconv.ParseInt(numberPart, 10, 64)
 	if err != nil {
 		return nil, errors.New("invalid numeric part in seal number")
