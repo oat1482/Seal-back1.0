@@ -33,6 +33,7 @@ func NewSealService(
 	}
 }
 
+// ดึงเลขซิลล่าสุดจากฐานข้อมูล
 func (s *SealService) GetLatestSealNumber() (string, error) {
 	latestSeal, err := s.repo.GetLatestSeal()
 	if err != nil {
@@ -44,19 +45,20 @@ func (s *SealService) GetLatestSealNumber() (string, error) {
 	return latestSeal.SealNumber, nil
 }
 
+// ค้นหาซิลตามหมายเลข
 func (s *SealService) GetSealByNumber(sealNumber string) (*model.Seal, error) {
 	return s.repo.FindByNumber(sealNumber)
 }
 
+// สร้างซิลใหม่ (กรณีสร้างทีละตัว)
 func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
-	// ถ้ามีซิลเบอร์นี้อยู่แล้ว
 	existingSeal, _ := s.repo.FindByNumber(seal.SealNumber)
 	if existingSeal != nil {
 		return errors.New("มีซิลเบอร์นี้แล้ว")
 	}
 
 	now := time.Now()
-	seal.Status = "พร้อมใช้งาน" // เดิมคือ "available"
+	seal.Status = "พร้อมใช้งาน"
 	seal.CreatedAt = now
 	seal.UpdatedAt = now
 
@@ -73,13 +75,14 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 	})
 }
 
-// ✅ สร้างซิลหลายตัว (Bulk Insert) จากเลขล่าสุด
+// สร้างซิลหลายตัว (Bulk Insert) จากเลขล่าสุด
 func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Seal, error) {
 	latestSealNumber, err := s.GetLatestSealNumber()
 	if err != nil {
 		return nil, err
 	}
 
+	// ใช้ฟังก์ชัน generate หมายเลขต่อเนื่อง
 	sealNumbers, err := GenerateNextSealNumbers(latestSealNumber, count)
 	if err != nil {
 		return nil, err
@@ -106,22 +109,25 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 		}
 		return s.logRepo.Create(&logEntry)
 	})
+
 	if err != nil {
 		return nil, err
 	}
 	return seals, nil
 }
 
-// ✅ สร้างซิลหลายตัว (Bulk Insert) จากเลขที่กำหนด
+// สร้างซิลหลายตัว (Bulk Insert) โดยรับเลขที่กำหนด
 func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string, count int, userID uint) ([]model.Seal, error) {
-	// ถ้า count == 1 -> เช็คว่ามีซิลนี้แล้วไหม
+	// ถ้า count=1 -> ลองเช็คใน DB ก่อน
 	if count == 1 {
 		existingSeal, _ := s.repo.FindByNumber(startingSealNumber)
 		if existingSeal != nil {
+			// ถ้ามีซิลนี้แล้ว ไม่ต้องสร้างเพิ่ม
 			return []model.Seal{*existingSeal}, nil
 		}
 	}
 
+	// ถ้า count>1 หรือไม่มีซิลนี้ใน DB => สร้างใหม่
 	sealNumbers, err := GenerateNextSealNumbers(startingSealNumber, count)
 	if err != nil {
 		return nil, err
@@ -154,17 +160,14 @@ func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string
 	return seals, nil
 }
 
-// ✅ ฟังก์ชันเปลี่ยนสถานะซิล
+// ฟังก์ชันเปลี่ยนสถานะซิล (เบิก, จ่าย, คืน)
 func (s *SealService) IssueSeal(sealNumber string, userID uint) error {
-	// ส่ง "เบิก"
 	return s.UpdateSealStatus(sealNumber, "เบิก", userID)
 }
 func (s *SealService) UseSeal(sealNumber string, userID uint) error {
-	// ส่ง "จ่าย"
 	return s.UpdateSealStatus(sealNumber, "จ่าย", userID)
 }
 func (s *SealService) ReturnSeal(sealNumber string, userID uint) error {
-	// ส่ง "คืน"
 	return s.UpdateSealStatus(sealNumber, "คืน", userID)
 }
 
@@ -179,7 +182,6 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 
 	switch status {
 	case "เบิก":
-		// เดิมคือ if seal.Status != "available"
 		if seal.Status != "พร้อมใช้งาน" {
 			return errors.New("ซิลต้องอยู่ในสถานะ 'พร้อมใช้งาน' เท่านั้นจึงจะเบิกได้")
 		}
@@ -222,7 +224,7 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 	})
 }
 
-// ✅ รายงานสถานะ (นับจำนวน)
+// รายงานสถานะ (นับจำนวน)
 func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 	var total, available, issued, used, returned int64
 
@@ -256,7 +258,7 @@ func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 	return report, nil
 }
 
-// ✅ GenerateNextSealNumbers: ใช้ Prefix + เลข, +i เพื่อไม่ให้ Count=1 ขยับเลข
+// GenerateNextSealNumbers: ใช้ prefix + numberPart + i
 func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	if latest == "" {
 		latest = "F000000000001"
@@ -278,8 +280,10 @@ func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	sealNumbers := make([]string, count)
 	numberLength := len(numberPart)
 
+	// กรณี count=1 => ไม่ขยับเลข (i=0 => +0)
+	// กรณี count>1 => จะไล่เลขทีละ 1
 	for i := 0; i < count; i++ {
-		newNum := lastInt + int64(i)
+		newNum := lastInt + int64(i) // ใช้ +i
 		sealNumbers[i] = fmt.Sprintf("%s%0*d", prefix, numberLength, newNum)
 	}
 
