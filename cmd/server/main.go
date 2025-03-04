@@ -42,12 +42,11 @@ func generateToken(user *model.User) (string, error) {
 }
 
 func main() {
-	// Load environment variables
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: No .env file found. Using system environment variables.")
 	}
 
-	// Initialize the database
 	config.InitDB()
 
 	log.Println("🔧 Running database migrations...")
@@ -56,24 +55,19 @@ func main() {
 	}
 	log.Println("✅ Migrations completed!")
 
-	// Create Fiber app
 	app := fiber.New()
 
-	// Apply authentication middleware globally (Every API requires JWT)
 	app.Use(middleware.JWTMiddleware())
 
-	// Initialize repositories
 	userRepo := repository.NewUserRepository(config.DB)
 	sealRepo := repository.NewSealRepository(config.DB)
 	transactionRepo := repository.NewTransactionRepository(config.DB)
 	logRepo := repository.NewLogRepository(config.DB)
 
-	// Initialize services
 	userService := service.NewUserService(userRepo)
 	sealService := service.NewSealService(sealRepo, transactionRepo, logRepo, config.DB)
 	logService := service.NewLogService(logRepo)
 
-	// Admin user to be created or verified
 	adminUser := &model.User{
 		EmpID:     998877,
 		Title:     "Mr.",
@@ -87,7 +81,6 @@ func main() {
 		PeaName:   "กฟจ.นครราชสีมา",
 	}
 
-	// Check if admin already exists
 	existingAdmin, _ := userService.GetUserByUsername(adminUser.Username)
 	if existingAdmin == nil {
 		if err := userService.CreateUser(adminUser); err != nil {
@@ -100,7 +93,6 @@ func main() {
 		log.Println("🔹 Admin user already exists!")
 	}
 
-	// Normal user to be created or verified
 	normalUser := &model.User{
 		EmpID:     123456,
 		Title:     "Mr.",
@@ -114,7 +106,6 @@ func main() {
 		PeaName:   "กฟจ.ชัยภูมิ",
 	}
 
-	// Check if normal user already exists
 	existingUser, _ := userService.GetUserByUsername(normalUser.Username)
 	if existingUser == nil {
 		if err := userService.CreateUser(normalUser); err != nil {
@@ -127,26 +118,21 @@ func main() {
 		log.Println("🔹 Normal user already exists!")
 	}
 
-	// Generate & log the JWT tokens for testing
 	adminToken, _ := generateToken(adminUser)
 	userToken, _ := generateToken(normalUser)
 	log.Println("🛡️ Admin Token (ใช้ใน Postman):", adminToken)
 	log.Println("👤 User Token (ใช้ใน Postman):", userToken)
 
-	// Create controllers
 	userController := controller.NewUserController(userService)
 	sealController := controller.NewSealController(sealService)
 	logController := controller.NewLogController(logService)
 
-	// Setup routes (Protected by JWT)
 	route.SetupUserRoutes(app, userController)
 	route.SetupSealRoutes(app, sealController)
 
-	// ✅ Log API is restricted to Admins only
 	app.Use("/logs", middleware.AdminOnlyMiddleware)
 	route.SetupLogRoutes(app, logController)
 
-	// Start the server
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
