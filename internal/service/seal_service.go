@@ -33,6 +33,10 @@ func NewSealService(
 	}
 }
 
+// -------------------------------------------------------------------
+//                            ส่วนนิ่งเดิม
+// -------------------------------------------------------------------
+
 // ดึงเลขซิลล่าสุดจากฐานข้อมูล
 func (s *SealService) GetLatestSealNumber() (string, error) {
 	latestSeal, err := s.repo.GetLatestSeal()
@@ -58,6 +62,7 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 	}
 
 	now := time.Now()
+	// สถานะเริ่มต้นเป็น "เพิ่ม"
 	seal.Status = "พร้อมใช้งาน"
 	seal.CreatedAt = now
 	seal.UpdatedAt = now
@@ -66,7 +71,6 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 		if err := s.repo.Create(seal); err != nil {
 			return err
 		}
-
 		logEntry := model.Log{
 			UserID: userID,
 			Action: fmt.Sprintf("สร้างซิล %s", seal.SealNumber),
@@ -82,7 +86,6 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 		return nil, err
 	}
 
-	// ใช้ฟังก์ชัน generate หมายเลขต่อเนื่อง
 	sealNumbers, err := GenerateNextSealNumbers(latestSealNumber, count)
 	if err != nil {
 		return nil, err
@@ -109,7 +112,6 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 		}
 		return s.logRepo.Create(&logEntry)
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -118,16 +120,14 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 
 // สร้างซิลหลายตัว (Bulk Insert) โดยรับเลขที่กำหนด
 func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string, count int, userID uint) ([]model.Seal, error) {
-	// ถ้า count=1 -> ลองเช็คใน DB ก่อน
 	if count == 1 {
 		existingSeal, _ := s.repo.FindByNumber(startingSealNumber)
 		if existingSeal != nil {
-			// ถ้ามีซิลนี้แล้ว ไม่ต้องสร้างเพิ่ม
+			// ถ้ามีซิลนี้แล้ว ไม่ต้องสร้างพร้อมใช้งาน
 			return []model.Seal{*existingSeal}, nil
 		}
 	}
 
-	// ถ้า count>1 หรือไม่มีซิลนี้ใน DB => สร้างใหม่
 	sealNumbers, err := GenerateNextSealNumbers(startingSealNumber, count)
 	if err != nil {
 		return nil, err
@@ -160,18 +160,27 @@ func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string
 	return seals, nil
 }
 
-// ฟังก์ชันเปลี่ยนสถานะซิล (เบิก, จ่าย, คืน)
+// -------------------------------------------------------------------
+//        Mechanics เดิม: "IssueSeal / UseSeal / ReturnSeal"
+// -------------------------------------------------------------------
+
+// IssueSeal: เปลี่ยนจาก "เพิ่ม" → "จ่าย"
 func (s *SealService) IssueSeal(sealNumber string, userID uint) error {
-	return s.UpdateSealStatus(sealNumber, "เบิก", userID)
-}
-func (s *SealService) UseSeal(sealNumber string, userID uint) error {
 	return s.UpdateSealStatus(sealNumber, "จ่าย", userID)
 }
-func (s *SealService) ReturnSeal(sealNumber string, userID uint) error {
-	return s.UpdateSealStatus(sealNumber, "คืน", userID)
+
+// UseSeal: เปลี่ยนจาก "จ่าย" → "ติดตั้งแล้ว"
+func (s *SealService) UseSeal(sealNumber string, userID uint) error {
+	return s.UpdateSealStatus(sealNumber, "ติดตั้งแล้ว", userID)
 }
 
-func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID uint) error {
+// ReturnSeal: เปลี่ยนจาก "ติดตั้งแล้ว" → "ใช้งานแล้ว"
+func (s *SealService) ReturnSeal(sealNumber string, userID uint) error {
+	return s.UpdateSealStatus(sealNumber, "ใช้งานแล้ว", userID)
+}
+
+// ฟังก์ชัน UpdateSealStatus เดิม (ไม่เพิ่มพารามิเตอร์ใหม่)
+func (s *SealService) UpdateSealStatus(sealNumber string, newStatus string, userID uint) error {
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
 		return errors.New("ไม่พบซิลในระบบ")
@@ -180,38 +189,39 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 	now := time.Now()
 	logAction := ""
 
-	switch status {
-	case "เบิก":
-		if seal.Status != "พร้อมใช้งาน" {
-			return errors.New("ซิลต้องอยู่ในสถานะ 'พร้อมใช้งาน' เท่านั้นจึงจะเบิกได้")
-		}
-		seal.Status = "เบิก"
-		seal.IssuedBy = &userID
-		seal.IssuedAt = &now
-		logAction = fmt.Sprintf("เบิกซิล %s", sealNumber)
-
+	switch newStatus {
 	case "จ่าย":
-		if seal.Status != "เบิก" {
-			return errors.New("ซิลต้องอยู่ในสถานะ 'เบิก' เท่านั้นจึงจะจ่ายได้")
+		if seal.Status != "พร้อมใช้งาน" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'เพิ่ม' เท่านั้นจึงจะจ่ายได้")
 		}
 		seal.Status = "จ่าย"
-		seal.UsedBy = &userID
-		seal.UsedAt = &now
+		seal.IssuedBy = &userID
+		seal.IssuedAt = &now
 		logAction = fmt.Sprintf("จ่ายซิล %s", sealNumber)
 
-	case "คืน":
+	case "ติดตั้งแล้ว":
 		if seal.Status != "จ่าย" {
-			return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะคืนได้")
+			return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
 		}
-		seal.Status = "คืน"
+		seal.Status = "ติดตั้งแล้ว"
+		seal.UsedBy = &userID
+		seal.UsedAt = &now
+		logAction = fmt.Sprintf("ติดตั้งซิล %s", sealNumber)
+
+	case "ใช้งานแล้ว":
+		if seal.Status != "ติดตั้งแล้ว" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'ติดตั้งแล้ว' เท่านั้นจึงจะใช้งานได้")
+		}
+		seal.Status = "ใช้งานแล้ว"
 		seal.ReturnedBy = &userID
 		seal.ReturnedAt = &now
-		logAction = fmt.Sprintf("คืนซิล %s", sealNumber)
+		logAction = fmt.Sprintf("ซิล %s ถูกตั้งค่าว่าใช้งานแล้ว", sealNumber)
 
 	default:
 		return errors.New("สถานะไม่ถูกต้อง")
 	}
 
+	// บันทึก DB + Log
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		if err := s.repo.Update(seal); err != nil {
 			return err
@@ -224,41 +234,84 @@ func (s *SealService) UpdateSealStatus(sealNumber string, status string, userID 
 	})
 }
 
-// รายงานสถานะ (นับจำนวน)
-func (s *SealService) GetSealReport() (map[string]interface{}, error) {
-	var total, available, issued, used, returned int64
+// -------------------------------------------------------------------
+//       เมธอดใหม่สำหรับรองรับ SerialNumber / Remarks เพิ่มเติม
+// -------------------------------------------------------------------
 
-	// นับซิลที่เป็น "พร้อมใช้งาน"
-	if err := s.db.Model(&model.Seal{}).Where("status = ?", "พร้อมใช้งาน").Count(&available).Error; err != nil {
-		return nil, err
-	}
-	// นับซิลที่เป็น "เบิก"
-	if err := s.db.Model(&model.Seal{}).Where("status = ?", "เบิก").Count(&issued).Error; err != nil {
-		return nil, err
-	}
-	// นับซิลที่เป็น "จ่าย"
-	if err := s.db.Model(&model.Seal{}).Where("status = ?", "จ่าย").Count(&used).Error; err != nil {
-		return nil, err
-	}
-	// นับซิลที่เป็น "คืน"
-	if err := s.db.Model(&model.Seal{}).Where("status = ?", "คืน").Count(&returned).Error; err != nil {
-		return nil, err
-	}
-
-	// รวมจำนวนซิลทั้งหมด = ผลรวมของทุกสถานะ
-	total = available + issued + used + returned
-
-	report := map[string]interface{}{
-		"total_seals": total,
-		"พร้อมใช้งาน": available,
-		"เบิก":        issued,
-		"จ่าย":        used,
-		"คืน":         returned,
-	}
-	return report, nil
+// UseSealWithSerial: ติดตั้งซิล พร้อมบันทึก serialNumber
+func (s *SealService) UseSealWithSerial(sealNumber string, userID uint, deviceSerial string) error {
+	return s.UpdateSealStatusWithExtra(sealNumber, "ติดตั้งแล้ว", userID, deviceSerial, "")
 }
 
-// GenerateNextSealNumbers: ใช้ prefix + numberPart + i
+// ReturnSealWithRemarks: ส่งคืน (ใช้งานแล้ว) พร้อมบันทึก remarks
+func (s *SealService) ReturnSealWithRemarks(sealNumber string, userID uint, remarks string) error {
+	return s.UpdateSealStatusWithExtra(sealNumber, "ใช้งานแล้ว", userID, "", remarks)
+}
+
+// UpdateSealStatusWithExtra: version ใหม่ รองรับ deviceSerial, remarks
+func (s *SealService) UpdateSealStatusWithExtra(
+	sealNumber string,
+	newStatus string,
+	userID uint,
+	deviceSerial string,
+	remarks string,
+) error {
+	seal, err := s.repo.FindByNumber(sealNumber)
+	if err != nil {
+		return errors.New("ไม่พบซิลในระบบ")
+	}
+
+	now := time.Now()
+	logAction := ""
+
+	switch newStatus {
+	case "ติดตั้งแล้ว":
+		if seal.Status != "จ่าย" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
+		}
+		seal.Status = "ติดตั้งแล้ว"
+		seal.UsedBy = &userID
+		seal.UsedAt = &now
+
+		// สมมติว่าคุณเพิ่มฟิลด์ `InstalledSerial` ใน model.Seal (ต้องแก้ model/Seal.go และ Migrate DB)
+		// seal.InstalledSerial = deviceSerial
+
+		logAction = fmt.Sprintf("ติดตั้งซิล %s (Serial: %s)", sealNumber, deviceSerial)
+
+	case "ใช้งานแล้ว":
+		if seal.Status != "ติดตั้งแล้ว" {
+			return errors.New("ซิลต้องอยู่ในสถานะ 'ติดตั้งแล้ว' เท่านั้นจึงจะใช้งานได้")
+		}
+		seal.Status = "ใช้งานแล้ว"
+		seal.ReturnedBy = &userID
+		seal.ReturnedAt = &now
+
+		// สมมติว่าคุณเพิ่มฟิลด์ `ReturnRemarks` ใน model.Seal หรือเก็บลง Transaction/Log
+		// seal.ReturnRemarks = remarks
+
+		logAction = fmt.Sprintf("ซิล %s ถูกตั้งค่าว่าใช้งานแล้ว (หมายเหตุ: %s)", sealNumber, remarks)
+
+	default:
+		return errors.New("สถานะไม่ถูกต้อง (version Extra)")
+	}
+
+	// บันทึก DB + Log
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.Update(seal); err != nil {
+			return err
+		}
+		logEntry := model.Log{
+			UserID: userID,
+			Action: logAction,
+		}
+		return s.logRepo.Create(&logEntry)
+	})
+}
+
+// -------------------------------------------------------------------
+//                     ฟังก์ชัน GenerateNextSealNumbers
+// -------------------------------------------------------------------
+
 func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	if latest == "" {
 		latest = "F000000000001"
@@ -280,12 +333,42 @@ func GenerateNextSealNumbers(latest string, count int) ([]string, error) {
 	sealNumbers := make([]string, count)
 	numberLength := len(numberPart)
 
-	// กรณี count=1 => ไม่ขยับเลข (i=0 => +0)
-	// กรณี count>1 => จะไล่เลขทีละ 1
+	// ไล่เลขต่อเนื่อง
 	for i := 0; i < count; i++ {
-		newNum := lastInt + int64(i) // ใช้ +i
+		newNum := lastInt + int64(i)
 		sealNumbers[i] = fmt.Sprintf("%s%0*d", prefix, numberLength, newNum)
 	}
 
 	return sealNumbers, nil
+}
+
+// -------------------------------------------------------------------
+//           รายงานสถานะ (GetSealReport) เวอร์ชัน 4 ขั้น
+// -------------------------------------------------------------------
+
+func (s *SealService) GetSealReport() (map[string]interface{}, error) {
+	var total, added, paid, installed, used int64
+
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "เพิ่ม").Count(&added).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "จ่าย").Count(&paid).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "ติดตั้งแล้ว").Count(&installed).Error; err != nil {
+		return nil, err
+	}
+	if err := s.db.Model(&model.Seal{}).Where("status = ?", "ใช้งานแล้ว").Count(&used).Error; err != nil {
+		return nil, err
+	}
+
+	total = added + paid + installed + used
+	report := map[string]interface{}{
+		"total_seals": total,
+		"เพิ่ม":       added,
+		"จ่าย":        paid,
+		"ติดตั้งแล้ว": installed,
+		"ใช้งานแล้ว":  used,
+	}
+	return report, nil
 }

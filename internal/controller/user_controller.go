@@ -14,7 +14,6 @@ func NewUserController(userService *service.UserService) *UserController {
 	return &UserController{userService: userService}
 }
 
-// ✅ ค้นหาผู้ใช้ตาม username
 func (uc *UserController) GetUserHandler(c *fiber.Ctx) error {
 	username := c.Params("username")
 
@@ -26,7 +25,6 @@ func (uc *UserController) GetUserHandler(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// ✅ เพิ่มผู้ใช้ใหม่
 func (uc *UserController) CreateUserHandler(c *fiber.Ctx) error {
 	var request struct {
 		EmpID     uint   `json:"emp_id"`
@@ -46,7 +44,6 @@ func (uc *UserController) CreateUserHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Employee ID already exists"})
 	}
 
-	// ✅ สร้าง User ใหม่
 	user := model.User{
 		EmpID:     request.EmpID,
 		Title:     request.Title,

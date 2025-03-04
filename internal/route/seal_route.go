@@ -2,7 +2,7 @@ package route
 
 import (
 	"github.com/Kev2406/PEA/internal/controller"
-	"github.com/Kev2406/PEA/internal/middleware" // ✅ Import Middleware
+	"github.com/Kev2406/PEA/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 

@@ -36,22 +36,18 @@ func (r *SealRepository) FindByNumber(sealNumber string) (*model.Seal, error) {
 	return &seal, nil
 }
 
-// ✅ ดึงเลขซิลล่าสุดจากฐานข้อมูล รองรับตัวอักษรนำหน้า และเลขไม่ฟิก 17 หลัก
 func (r *SealRepository) GetLatestSeal() (*model.Seal, error) {
 	var seals []model.Seal
 
-	// ✅ คิวรีหาซิลทั้งหมดเรียงจากใหม่ -> เก่า
 	if err := r.db.Order("seal_number DESC").Find(&seals).Error; err != nil {
 		return nil, err
 	}
 
-	// ✅ ใช้ Regular Expression แยก Prefix และเลขท้าย
 	re := regexp.MustCompile(`^([A-Za-z]*)(\d+)$`)
 
 	var latestSeal *model.Seal
 	var maxNumber int64
 
-	// ✅ ค้นหาหมายเลขที่มีตัวเลขท้ายมากที่สุด
 	for i := range seals {
 		matches := re.FindStringSubmatch(seals[i].SealNumber)
 		if len(matches) == 3 {
@@ -64,15 +60,16 @@ func (r *SealRepository) GetLatestSeal() (*model.Seal, error) {
 	}
 
 	if latestSeal == nil {
-		return nil, nil // ✅ ถ้าไม่มีเรคคอร์ด ให้ return nil
+		return nil, nil
 	}
 	return latestSeal, nil
 }
 
-// ✅ ค้นหาหมายเลขซิลล่าสุดที่มี Prefix เดียวกัน
 func (r *SealRepository) FindByPrefix(prefix string) (*model.Seal, error) {
 	var seal model.Seal
-	if err := r.db.Where("seal_number LIKE ?", prefix+"%").Order("LENGTH(seal_number) DESC, seal_number DESC").First(&seal).Error; err != nil {
+	if err := r.db.Where("seal_number LIKE ?", prefix+"%").
+		Order("LENGTH(seal_number) DESC, seal_number DESC").
+		First(&seal).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -89,7 +86,6 @@ func (r *SealRepository) Delete(sealID uint) error {
 	return r.db.Delete(&model.Seal{}, sealID).Error
 }
 
-// ✅ Helper: แปลง string เป็น int64 (กรณีที่มีเลขอยู่ใน Seal Number)
 func parseInt64(s string) int64 {
 	if s == "" {
 		return 0
