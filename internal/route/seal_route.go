@@ -37,5 +37,9 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 	// ✅ User คืนซิลหลังจากใช้งาน
 	seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
 
+	// ✅ ดึงซีลตาม Status
 	seal.Get("/status/:status", sealController.GetSealsByStatusHandler)
+
+	// ✅ ดึงซีลตาม ID และ Status (อันนี้เพิ่มเข้ามา)
+	seal.Get("/:id/status/:status", middleware.JWTMiddleware(), sealController.GetSealByIDAndStatusHandler)
 }

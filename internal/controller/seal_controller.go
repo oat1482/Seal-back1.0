@@ -42,6 +42,40 @@ func (sc *SealController) GetSealsByStatusHandler(c *fiber.Ctx) error {
 	return c.JSON(seals)
 }
 
+func (sc *SealController) GetSealByIDAndStatusHandler(c *fiber.Ctx) error {
+	// ดึงค่า id และ status จาก Path Parameter
+	rawID := c.Params("id")
+	rawStatus := c.Params("status")
+
+	// Decode ค่า status เผื่อเป็น URL Encoded (เช่น %E0%B8%9E%E0%B8%A3%E0%B9%89...)
+	status, err := url.QueryUnescape(rawStatus)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid status parameter: " + err.Error(),
+		})
+	}
+
+	// แปลง ID ให้เป็นตัวเลข ถ้าไม่ใช่ตัวเลขถือว่าไม่ถูกต้อง
+	sealID, err := strconv.Atoi(rawID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid ID format",
+		})
+	}
+
+	// Log Debug
+	log.Println("🎬 กำลังดึงซีล ID:", sealID, " สถานะ:", status)
+
+	// ค้นหา Seal จาก ID และ Status ผ่าน Service
+	seal, err := sc.sealService.GetSealByIDAndStatus(uint(sealID), status)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
+	}
+
+	// ส่ง JSON กลับถ้าพบซีล
+	return c.JSON(seal)
+}
+
 // ------------------------- ฟีเจอร์ใหม่ ------------------------- //
 //
 // POST /api/seals/generate-batches

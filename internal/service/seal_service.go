@@ -60,6 +60,19 @@ func (s *SealService) GetSealsByStatus(status string) ([]model.Seal, error) {
 	return seals, nil
 }
 
+func (s *SealService) GetSealByIDAndStatus(sealID uint, status string) (*model.Seal, error) {
+	log.Println("🔍 กำลังดึงซีลจาก ID:", sealID, " และสถานะ:", status)
+
+	var seal model.Seal
+	if err := s.db.Where("id = ? AND status = ?", sealID, status).First(&seal).Error; err != nil {
+		log.Println("❌ ไม่พบซีล ID:", sealID, "ที่มีสถานะ:", status)
+		return nil, err
+	}
+
+	log.Println("✅ เจอซีล ID:", sealID, " สถานะ:", status)
+	return &seal, nil
+}
+
 // GetSealByNumber retrieves a seal by its number.
 func (s *SealService) GetSealByNumber(sealNumber string) (*model.Seal, error) {
 	return s.repo.FindByNumber(sealNumber)
