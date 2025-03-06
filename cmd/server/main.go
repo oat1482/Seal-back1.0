@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Kev2406/PEA/internal/config"
@@ -15,13 +16,15 @@ import (
 	"github.com/Kev2406/PEA/internal/route"
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 )
 
 var secretKey = []byte("your-secret-key")
 
-func generateToken(user *model.User) (string, error) {
+func generateToken(user *model.User, wg *sync.WaitGroup, tokenChan chan<- string) {
+	defer wg.Done()
 	claims := jwt.MapClaims{
 		"user_id":    user.ID,
 		"emp_id":     user.EmpID,
@@ -36,13 +39,16 @@ func generateToken(user *model.User) (string, error) {
 		"pea_short":  user.PeaShort,
 		"pea_name":   user.PeaName,
 	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(secretKey)
+	signedToken, err := token.SignedString(secretKey)
+	if err != nil {
+		tokenChan <- ""
+		return
+	}
+	tokenChan <- signedToken
 }
 
 func main() {
-
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: No .env file found. Using system environment variables.")
 	}
@@ -50,12 +56,35 @@ func main() {
 	config.InitDB()
 
 	log.Println("🔧 Running database migrations...")
-	if err := migration.CreateStoreTable(config.DB); err != nil {
-		log.Fatalf("❌ Migration failed: %v", err)
-	}
-	log.Println("✅ Migrations completed!")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := migration.CreateStoreTable(config.DB); err != nil {
+			log.Fatalf("❌ Migration failed: %v", err)
+		}
+		log.Println("✅ Migrations completed!")
+	}()
 
 	app := fiber.New()
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "http://192.168.2.19:5173, https://192.168.2.19:5173",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders:     "Content-Type, Authorization, Accept",
+		AllowCredentials: true,
+		ExposeHeaders:    "Content-Length, Content-Type",
+		MaxAge:           12 * 3600,
+	}))
+
+	app.Options("*", func(c *fiber.Ctx) error {
+		if c.Get("Origin") != "" {
+			c.Set("Access-Control-Allow-Origin", c.Get("Origin"))
+		}
+		c.Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
+		c.Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+		c.Set("Access-Control-Allow-Credentials", "true")
+		return c.SendStatus(fiber.StatusOK)
+	})
 
 	app.Use(middleware.JWTMiddleware())
 
@@ -81,18 +110,6 @@ func main() {
 		PeaName:   "กฟจ.นครราชสีมา",
 	}
 
-	existingAdmin, _ := userService.GetUserByUsername(adminUser.Username)
-	if existingAdmin == nil {
-		if err := userService.CreateUser(adminUser); err != nil {
-			log.Println("❌ Failed to create admin user:", err)
-		} else {
-			log.Println("✅ Admin user created!")
-		}
-	} else {
-		adminUser = existingAdmin
-		log.Println("🔹 Admin user already exists!")
-	}
-
 	normalUser := &model.User{
 		EmpID:     123456,
 		Title:     "Mr.",
@@ -106,20 +123,19 @@ func main() {
 		PeaName:   "กฟจ.ชัยภูมิ",
 	}
 
-	existingUser, _ := userService.GetUserByUsername(normalUser.Username)
-	if existingUser == nil {
-		if err := userService.CreateUser(normalUser); err != nil {
-			log.Println("❌ Failed to create normal user:", err)
-		} else {
-			log.Println("✅ Normal user created!")
-		}
-	} else {
-		normalUser = existingUser
-		log.Println("🔹 Normal user already exists!")
-	}
+	adminChan := make(chan string, 1)
+	userChan := make(chan string, 1)
+	wg.Add(2)
+	go generateToken(adminUser, &wg, adminChan)
+	go generateToken(normalUser, &wg, userChan)
 
-	adminToken, _ := generateToken(adminUser)
-	userToken, _ := generateToken(normalUser)
+	wg.Wait()
+	close(adminChan)
+	close(userChan)
+
+	adminToken := <-adminChan
+	userToken := <-userChan
+
 	log.Println("🛡️ Admin Token (ใช้ใน Postman):", adminToken)
 	log.Println("👤 User Token (ใช้ใน Postman):", userToken)
 
@@ -139,5 +155,5 @@ func main() {
 	}
 
 	fmt.Printf("🚀 Server is running on http://localhost:%s\n", port)
-	log.Fatal(app.Listen(":" + port))
+	log.Fatal(app.Listen("0.0.0.0:" + port))
 }

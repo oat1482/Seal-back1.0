@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"strconv"
+	"sync"
 
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"gorm.io/gorm"
@@ -38,7 +39,6 @@ func (r *SealRepository) FindByNumber(sealNumber string) (*model.Seal, error) {
 
 func (r *SealRepository) GetLatestSeal() (*model.Seal, error) {
 	var seals []model.Seal
-
 	if err := r.db.Order("seal_number DESC").Find(&seals).Error; err != nil {
 		return nil, err
 	}
@@ -47,17 +47,26 @@ func (r *SealRepository) GetLatestSeal() (*model.Seal, error) {
 
 	var latestSeal *model.Seal
 	var maxNumber int64
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 
 	for i := range seals {
-		matches := re.FindStringSubmatch(seals[i].SealNumber)
-		if len(matches) == 3 {
-			num := parseInt64(matches[2])
-			if num > maxNumber {
-				maxNumber = num
-				latestSeal = &seals[i]
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			matches := re.FindStringSubmatch(seals[i].SealNumber)
+			if len(matches) == 3 {
+				num := parseInt64(matches[2])
+				mu.Lock()
+				if num > maxNumber {
+					maxNumber = num
+					latestSeal = &seals[i]
+				}
+				mu.Unlock()
 			}
-		}
+		}(i)
 	}
+	wg.Wait()
 
 	if latestSeal == nil {
 		return nil, nil
