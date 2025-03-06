@@ -14,7 +14,6 @@ func NewTransactionController(transactionService *service.TransactionService) *T
 	return &TransactionController{transactionService: transactionService}
 }
 
-// สร้าง Transaction
 func (tc *TransactionController) CreateTransactionHandler(c *fiber.Ctx) error {
 	var transaction model.Transaction
 	if err := c.BodyParser(&transaction); err != nil {
@@ -29,7 +28,6 @@ func (tc *TransactionController) CreateTransactionHandler(c *fiber.Ctx) error {
 	return c.JSON(transaction)
 }
 
-// ดึง Transaction ทั้งหมด
 func (tc *TransactionController) GetAllTransactionsHandler(c *fiber.Ctx) error {
 	transactions, err := tc.transactionService.GetAllTransactions()
 	if err != nil {

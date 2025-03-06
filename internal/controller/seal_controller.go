@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"regexp"
 	"strconv"
 
@@ -16,6 +17,109 @@ type SealController struct {
 
 func NewSealController(sealService *service.SealService) *SealController {
 	return &SealController{sealService: sealService}
+}
+
+// เราต้อง decode ค่าที่รับมาจาก URL ก่อนที่จะนำไปค้นหาในฐานข้อมูล เพราะตอนนี้ค่า status ที่ได้รับมานั้นถูก encode อยู่เป็น %E0%B8%9E... แทนที่จะเป็น "พร้อมใช้งาน" แบบปกติ
+
+// ลองแก้ไขฟังก์ชัน GetSealsByStatusHandler ให้ decode โดยใช้ url.QueryUnescape
+// ในไฟล์ seal_controller.go
+func (sc *SealController) GetSealsByStatusHandler(c *fiber.Ctx) error {
+	// ดึง status จาก URL params เช่น /api/seals/status/พร้อมใช้งาน
+	rawStatus := c.Params("status")
+	status, err := url.QueryUnescape(rawStatus)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid status parameter: " + err.Error(),
+		})
+	}
+
+	seals, err := sc.sealService.GetSealsByStatus(status)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return c.JSON(seals)
+}
+
+// ------------------------- ฟีเจอร์ใหม่ ------------------------- //
+//
+// POST /api/seals/generate-batches
+//
+// โครงสร้าง JSON ที่คาดหวัง:
+// {
+//   "batches": [
+//     { "seal_number": "F2499", "count": 3 },
+//     { "seal_number": "PEA000002", "count": 2 }
+//   ]
+// }
+//
+// เฉพาะ admin เท่านั้น
+//
+// -------------------------------------------------------------- //
+
+func (sc *SealController) GenerateSealsMultipleBatchesHandler(c *fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(uint)
+	role, roleOk := c.Locals("role").(string)
+	if !ok || !roleOk || role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Access denied, admin only",
+		})
+	}
+
+	// โครงสร้างสำหรับรับ request ที่มีหลาย batch
+	var request struct {
+		Batches []struct {
+			SealNumber string `json:"seal_number"`
+			Count      int    `json:"count"`
+		} `json:"batches"`
+	}
+
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// เช็คว่าใน batches ต้องมีอย่างน้อย 1 รายการ
+	if len(request.Batches) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "No batches provided",
+		})
+	}
+
+	// เตรียม slice สำหรับรวมผลลัพธ์ทั้งหมด
+	var allCreatedSeals []interface{}
+
+	// วนลูปในแต่ละ batch
+	for _, batch := range request.Batches {
+		if batch.SealNumber == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Seal number is required in each batch",
+			})
+		}
+		if batch.Count <= 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid count (%d) in batch for seal_number=%s", batch.Count, batch.SealNumber),
+			})
+		}
+
+		// เรียก service เพื่อ generate & create seals
+		seals, err := sc.sealService.GenerateAndCreateSealsFromNumber(batch.SealNumber, batch.Count, userID)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+		// เก็บ seals ที่สร้างได้ในผลลัพธ์รวม
+		allCreatedSeals = append(allCreatedSeals, seals)
+	}
+
+	// ตอบกลับเป็น JSON รวมทั้งหมด
+	return c.JSON(fiber.Map{
+		"message": "All batches generated successfully",
+		"results": allCreatedSeals, // จะเป็น array ของ array seals (ถ้าอยากแบนให้อยู่ใน array เดียว อาจ loop รวมกันได้)
+	})
 }
 
 // --------------- ส่วนฟังก์ชันเดิม ๆ ที่ไม่เปลี่ยน --------------- //
@@ -154,6 +258,7 @@ func (sc *SealController) ReturnSealHandler(c *fiber.Ctx) error {
 //	ส่วนการ Generate / Create Seal เดิม ๆ                             //
 //
 // ------------------------------------------------------------------- //
+
 func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 	userID, ok := c.Locals("user_id").(uint)
 	role, roleOk := c.Locals("role").(string)

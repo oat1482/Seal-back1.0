@@ -13,8 +13,11 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 	// ✅ User & Admin สามารถสร้าง Seal ได้
 	seal.Post("/", middleware.JWTMiddleware(), sealController.CreateSealHandler)
 
-	// ✅ Admin เท่านั้น สามารถ Generate ซิลชุดใหญ่ได้
+	// ✅ Admin เท่านั้น สามารถ Generate ซิลชุดใหญ่ได้ (แบบเดิม)
 	seal.Post("/generate", middleware.JWTMiddleware(), sealController.GenerateSealsHandler)
+
+	// ✅ ฟีเจอร์ใหม่: Generate ซิลหลายชุด (Batch) ในครั้งเดียว
+	seal.Post("/generate-batches", middleware.JWTMiddleware(), sealController.GenerateSealsMultipleBatchesHandler)
 
 	// ✅ สแกนบาร์โค้ดเพื่อดึงข้อมูลซิล
 	seal.Post("/scan", middleware.JWTMiddleware(), sealController.ScanSealHandler)
@@ -33,4 +36,6 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 
 	// ✅ User คืนซิลหลังจากใช้งาน
 	seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
+
+	seal.Get("/status/:status", sealController.GetSealsByStatusHandler)
 }

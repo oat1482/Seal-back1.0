@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strconv"
 	"time"
@@ -47,6 +48,16 @@ func (s *SealService) GetLatestSealNumber() (string, error) {
 		return "F000000000001", nil
 	}
 	return latestSeal.SealNumber, nil
+}
+
+func (s *SealService) GetSealsByStatus(status string) ([]model.Seal, error) {
+	log.Println("🎬 กำลังดึงซีลสถานะ:", status) // <<-- ใส่ Log ตรงนี้
+	var seals []model.Seal
+	if err := s.db.Where("status = ?", status).Find(&seals).Error; err != nil {
+		return nil, err
+	}
+	log.Println("🔍 เจอซีลจำนวน:", len(seals))
+	return seals, nil
 }
 
 // GetSealByNumber retrieves a seal by its number.

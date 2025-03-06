@@ -30,6 +30,7 @@ func CreateStoreTable(db *gorm.DB) error {
 	log.Println("✅ Seal Table Migrated Successfully!")
 
 	log.Println("🔄 Migrating Transaction Table...")
+
 	if err := db.AutoMigrate(&model.Transaction{}); err != nil {
 		log.Printf("❌ Failed to migrate Transaction: %v", err)
 		return err
