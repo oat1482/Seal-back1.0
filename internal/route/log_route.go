@@ -1,42 +1,39 @@
 package route
 
 import (
-	"log"
-
 	"github.com/Kev2406/PEA/internal/controller"
+	"github.com/Kev2406/PEA/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 )
 
-func AdminOnlyMiddleware(c *fiber.Ctx) error {
-	// Log path ของ request
-	log.Printf("🔍 [AdminOnlyMiddleware] Request Path: %s", c.Path())
-
-	// ดึง role จาก context
-	role, ok := c.Locals("role").(string)
-	log.Printf("🔍 [AdminOnlyMiddleware] Role in context: %v (ok: %v)", role, ok)
-
-	if !ok || role != "admin" {
-		log.Printf("🚫 [AdminOnlyMiddleware] Access denied. Required role: admin, Found: %v", role)
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied. Admins only"})
-	}
-
-	log.Println("✅ [AdminOnlyMiddleware] Access granted for admin")
-	return c.Next()
-}
-
 func SetupLogRoutes(app *fiber.App, logController *controller.LogController) {
-	// สร้าง group /api ก่อน
 	api := app.Group("/api")
-	// จากนั้นสร้าง group /logs ภายใต้ /api → เส้นทางจริงคือ /api/logs
-	logGroup := api.Group("/logs")
-	log.Println("🔧 [SetupLogRoutes] Setting up /api/logs routes")
+	logs := api.Group("/logs")
 
-	// ใช้ middleware ที่จำกัดให้เฉพาะ admin
-	logGroup.Use(AdminOnlyMiddleware)
+	// ✅ ดึง Log แยกตามประเภท (Created, Issued, Used, Returned)
+	logs.Get("/created", middleware.JWTMiddleware(), logController.GetCreatedLogsHandler)
+	logs.Get("/issued", middleware.JWTMiddleware(), logController.GetIssuedLogsHandler)
+	logs.Get("/used", middleware.JWTMiddleware(), logController.GetUsedLogsHandler)
+	logs.Get("/returned", middleware.JWTMiddleware(), logController.GetReturnedLogsHandler)
 
-	// กำหนด route GET /api/logs พร้อม log เพิ่มเติม
-	logGroup.Get("/", func(c *fiber.Ctx) error {
-		log.Printf("🔍 [SetupLogRoutes] GET /api/logs invoked")
-		return logController.GetLogsHandler(c)
-	})
+	// ✅ User & Admin สามารถสร้าง Log ได้
+	logs.Post("/", middleware.JWTMiddleware(), logController.CreateLogHandler)
+
+	// ✅ ดึง Log ทั้งหมด (Admin เท่านั้น)
+	logs.Get("/", middleware.JWTMiddleware(), logController.GetAllLogsHandler)
+
+	// ✅ ดึง Log ตามประเภท (Type)
+	logs.Get("/type/:log_type", middleware.JWTMiddleware(), logController.GetLogsByTypeHandler)
+
+	// ✅ ดึง Log ตามผู้ใช้งาน (User)
+	logs.Get("/user/:user_id", middleware.JWTMiddleware(), logController.GetLogsByUserHandler)
+
+	// ✅ ดึง Log ตามช่วงเวลา (Date Range)
+	logs.Get("/range", middleware.JWTMiddleware(), logController.GetLogsByDateRangeHandler)
+
+	// ✅ ดึง Log ตาม ID (Keep this LAST to avoid conflicts)
+	logs.Get("/:log_id", middleware.JWTMiddleware(), logController.GetLogByIDHandler)
+
+	// ✅ ลบ Log (Admin เท่านั้น)
+	logs.Delete("/:log_id", middleware.JWTMiddleware(), logController.DeleteLogHandler)
 }

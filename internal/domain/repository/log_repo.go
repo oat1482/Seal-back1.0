@@ -76,3 +76,46 @@ func (r *LogRepository) GetLogsWithUsers() ([]map[string]interface{}, error) {
 
 	return results, nil
 }
+
+// ✅ ดึง Log ตาม ID
+func (r *LogRepository) GetByID(logID uint) (*model.Log, error) {
+	var log model.Log
+	err := r.db.Where("id = ?", logID).First(&log).Error
+	if err != nil {
+		return nil, err
+	}
+	return &log, nil
+}
+
+// ✅ ดึง Log ตามประเภท (Type)
+func (r *LogRepository) GetByType(logType string) ([]model.Log, error) {
+	var logs []model.Log
+	err := r.db.Where("action = ?", logType).Find(&logs).Error
+	return logs, err
+}
+
+// ✅ ดึง Log ตาม User ID
+func (r *LogRepository) GetByUser(userID uint) ([]model.Log, error) {
+	var logs []model.Log
+	err := r.db.Where("user_id = ?", userID).Find(&logs).Error
+	return logs, err
+}
+
+// ✅ ดึง Log ตามช่วงเวลา (Date Range)
+func (r *LogRepository) GetByDateRange(startDate, endDate string) ([]model.Log, error) {
+	var logs []model.Log
+	err := r.db.Where("timestamp BETWEEN ? AND ?", startDate, endDate).Find(&logs).Error
+	return logs, err
+}
+
+// ✅ ลบ Log ตาม ID
+func (r *LogRepository) Delete(logID uint) error {
+	return r.db.Where("id = ?", logID).Delete(&model.Log{}).Error
+}
+
+// ✅ Fetch logs by action type
+func (r *LogRepository) GetByAction(action string) ([]model.Log, error) {
+	var logs []model.Log
+	err := r.db.Where("action LIKE ?", "%"+action+"%").Find(&logs).Error
+	return logs, err
+}
