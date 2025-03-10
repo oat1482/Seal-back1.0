@@ -105,3 +105,10 @@ func parseInt64(s string) int64 {
 	}
 	return n
 }
+func (r *SealRepository) CheckSealExists(sealNumber string) (bool, error) {
+	var count int64
+	if err := r.db.Model(&model.Seal{}).Where("seal_number = ?", sealNumber).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

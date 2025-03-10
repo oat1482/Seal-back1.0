@@ -92,52 +92,15 @@ func main() {
 	sealRepo := repository.NewSealRepository(config.DB)
 	transactionRepo := repository.NewTransactionRepository(config.DB)
 	logRepo := repository.NewLogRepository(config.DB)
+	technicianRepo := repository.NewTechnicianRepository(config.DB)
 
 	userService := service.NewUserService(userRepo)
 	sealService := service.NewSealService(sealRepo, transactionRepo, logRepo, config.DB)
 	logService := service.NewLogService(logRepo)
+	technicianService := service.NewTechnicianService(technicianRepo)
 
-	adminUser := &model.User{
-		EmpID:     998877,
-		Title:     "Mr.",
-		FirstName: "Admin",
-		LastName:  "Test",
-		Username:  "admin_test",
-		Email:     "admin_test@pea.co.th",
-		Role:      "admin",
-		PeaCode:   "F01101",
-		PeaShort:  "FNRM",
-		PeaName:   "กฟจ.นครราชสีมา",
-	}
-
-	normalUser := &model.User{
-		EmpID:     123456,
-		Title:     "Mr.",
-		FirstName: "User",
-		LastName:  "Test",
-		Username:  "user_test",
-		Email:     "user_test@pea.co.th",
-		Role:      "user",
-		PeaCode:   "F02101",
-		PeaShort:  "FCYP",
-		PeaName:   "กฟจ.ชัยภูมิ",
-	}
-
-	adminChan := make(chan string, 1)
-	userChan := make(chan string, 1)
-	wg.Add(2)
-	go generateToken(adminUser, &wg, adminChan)
-	go generateToken(normalUser, &wg, userChan)
-
-	wg.Wait()
-	close(adminChan)
-	close(userChan)
-
-	adminToken := <-adminChan
-	userToken := <-userChan
-
-	log.Println("🛡️ Admin Token (ใช้ใน Postman):", adminToken)
-	log.Println("👤 User Token (ใช้ใน Postman):", userToken)
+	// แก้ไข: เพิ่ม sealService เป็นอาร์กิวเมนต์ที่สอง
+	technicianController := controller.NewTechnicianController(technicianService, sealService)
 
 	userController := controller.NewUserController(userService)
 	sealController := controller.NewSealController(sealService)
@@ -145,6 +108,7 @@ func main() {
 
 	route.SetupUserRoutes(app, userController)
 	route.SetupSealRoutes(app, sealController)
+	route.SetupTechnicianRoutes(app, technicianController)
 
 	app.Use("/logs", middleware.AdminOnlyMiddleware)
 	route.SetupLogRoutes(app, logController)

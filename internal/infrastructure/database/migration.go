@@ -11,7 +11,7 @@ import (
 func CreateStoreTable(db *gorm.DB) error {
 	log.Println("🚀 Starting AutoMigrate for tables...")
 
-	// ✅ ปิด foreign key constraints ชั่วคราวเพื่อป้องกันปัญหา constraints ที่ไม่มีอยู่จริง
+	// ✅ ปิด foreign key constraints ชั่วคราวเพื่อป้องกันปัญหาที่อาจเกิดขึ้น
 	db.Config.DisableForeignKeyConstraintWhenMigrating = true
 
 	// ✅ เพิ่ม Log เช็คว่ารันถึงแต่ละโมเดลหรือไม่
@@ -22,6 +22,13 @@ func CreateStoreTable(db *gorm.DB) error {
 	}
 	log.Println("✅ User Table Migrated Successfully!")
 
+	log.Println("🔄 Migrating Technician Table...")
+	if err := db.AutoMigrate(&model.Technician{}); err != nil {
+		log.Printf("❌ Failed to migrate Technician: %v", err)
+		return err
+	}
+	log.Println("✅ Technician Table Migrated Successfully!")
+
 	log.Println("🔄 Migrating Seal Table...")
 	if err := db.AutoMigrate(&model.Seal{}); err != nil {
 		log.Printf("❌ Failed to migrate Seal: %v", err)
@@ -30,7 +37,6 @@ func CreateStoreTable(db *gorm.DB) error {
 	log.Println("✅ Seal Table Migrated Successfully!")
 
 	log.Println("🔄 Migrating Transaction Table...")
-
 	if err := db.AutoMigrate(&model.Transaction{}); err != nil {
 		log.Printf("❌ Failed to migrate Transaction: %v", err)
 		return err
@@ -48,14 +54,6 @@ func CreateStoreTable(db *gorm.DB) error {
 
 	// ✅ เปิด foreign key constraints กลับมา หลังจาก migration เสร็จสิ้น
 	db.Config.DisableForeignKeyConstraintWhenMigrating = false
-
-	// ✅ Seed users after migration
-	err := SeedUsers(db)
-	if err != nil {
-		log.Printf("⚠️ Warning: Seeding failed: %v", err)
-	} else {
-		log.Println("✅ Seeding completed successfully!")
-	}
 
 	return nil
 }

@@ -251,7 +251,6 @@ func (s *SealService) ReturnSealWithRemarks(sealNumber string, userID uint, rema
 	return s.UpdateSealStatusWithExtra(sealNumber, "ใช้งานแล้ว", userID, "", remarks)
 }
 
-// IssueSealWithDetails: New method to support additional data for issuing seal.
 func (s *SealService) IssueSealWithDetails(sealNumber string, issuedTo uint, employeeCode string, remark string) error {
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
@@ -264,6 +263,8 @@ func (s *SealService) IssueSealWithDetails(sealNumber string, issuedTo uint, emp
 	// Update seal fields with additional details.
 	seal.Status = "จ่าย"
 	seal.IssuedTo = &issuedTo
+	// เพิ่มบรรทัดนี้เพื่อบันทึก technician id ไปที่ฟิลด์ AssignedToTechnician
+	seal.AssignedToTechnician = &issuedTo
 	seal.IssuedAt = &now
 	seal.EmployeeCode = employeeCode // Must exist in model.Seal
 	seal.IssueRemark = remark        // Must exist in model.Seal
@@ -384,4 +385,86 @@ func (s *SealService) GetSealReport() (map[string]interface{}, error) {
 		"ใช้งานแล้ว":  used,
 	}
 	return report, nil
+}
+func (s *SealService) GetSealsByTechnician(techID uint) ([]model.Seal, error) {
+	var seals []model.Seal
+	if err := s.db.Where("assigned_to_technician = ?", techID).Find(&seals).Error; err != nil {
+		return nil, err
+	}
+	return seals, nil
+}
+
+// ✅ ตรวจสอบก่อนเจนว่าเลขซ้ำไหม
+func (s *SealService) CheckSealBeforeGenerate(sealNumber string) (bool, error) {
+	exists, err := s.repo.CheckSealExists(sealNumber)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return true, errors.New("หมายเลข Seal นี้มีอยู่ในระบบแล้ว")
+	}
+	return false, nil
+}
+func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint) error {
+	seal, err := s.repo.FindByNumber(sealNumber)
+	if err != nil {
+		return errors.New("ไม่พบซิลในระบบ")
+	}
+	if seal.Status != "จ่าย" {
+		return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะ Assign ได้")
+	}
+
+	seal.AssignedToTechnician = &techID
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.Update(seal); err != nil {
+			return err
+		}
+
+		logEntry := model.Log{
+			UserID: techID,
+			Action: fmt.Sprintf("ได้รับซิล %s", sealNumber),
+		}
+		return s.logRepo.Create(&logEntry)
+	})
+}
+
+// ✅ ช่างติดตั้ง Seal ได้เฉพาะที่ได้รับมอบหมาย
+func (s *SealService) InstallSeal(sealNumber string, techID uint, serialNumber string) error {
+	seal, err := s.repo.FindByNumber(sealNumber)
+	if err != nil {
+		return errors.New("ไม่พบซิลในระบบ")
+	}
+	if seal.AssignedToTechnician == nil || *seal.AssignedToTechnician != techID {
+		return errors.New("คุณไม่มีสิทธิ์ติดตั้งซีลนี้")
+	}
+	if seal.Status != "จ่าย" {
+		return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
+	}
+
+	now := time.Now()
+	seal.Status = "ติดตั้งแล้ว"
+	seal.UsedBy = &techID
+	seal.UsedAt = &now
+	seal.InstalledSerial = serialNumber
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.Update(seal); err != nil {
+			return err
+		}
+
+		logEntry := model.Log{
+			UserID: techID,
+			Action: fmt.Sprintf("ติดตั้งซิล %s (Serial: %s)", sealNumber, serialNumber),
+		}
+		return s.logRepo.Create(&logEntry)
+	})
+}
+func (s *SealService) GetSealLogs(sealNumber string) ([]model.Log, error) {
+	var logs []model.Log
+	err := s.db.Where("action LIKE ?", "%"+sealNumber+"%").Order("created_at DESC").Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	return logs, nil
 }

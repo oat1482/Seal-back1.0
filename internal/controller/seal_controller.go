@@ -370,3 +370,60 @@ func incrementSealNumber(current string) string {
 	num++
 	return fmt.Sprintf("%s%0*d", prefix, len(numberPart), num)
 }
+
+// ✅ API เช็คว่าหมายเลข Seal มีอยู่ในระบบหรือไม่
+func (sc *SealController) CheckSealExistsHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+	log.Println("🔍 Checking Seal:", sealNumber)
+
+	exists, err := sc.sealService.CheckSealBeforeGenerate(sealNumber)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if exists {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"message": "Seal number already exists", "seal_number": sealNumber})
+	}
+
+	return c.JSON(fiber.Map{"message": "Seal number is available", "seal_number": sealNumber})
+}
+
+// ✅ ฟังก์ชันให้ช่างติดตั้ง Seal (เฉพาะที่ได้รับมอบหมาย)
+func (sc *SealController) InstallSealHandler(c *fiber.Ctx) error {
+	techID, ok := c.Locals("tech_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	sealNumber := c.Params("seal_number")
+	var req struct {
+		SerialNumber string `json:"serial_number,omitempty"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	err := sc.sealService.UseSealWithSerial(sealNumber, techID, req.SerialNumber)
+	if err != nil {
+		log.Println("❌ Install Seal Error:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":       "ติดตั้ง Seal เรียบร้อย",
+		"serial_number": req.SerialNumber,
+	})
+}
+
+// ✅ ฟังก์ชันให้ช่างดู Log การติดตั้ง Seal ที่เคยใช้งาน
+func (sc *SealController) GetSealLogsHandler(c *fiber.Ctx) error {
+	sealNumber := c.Params("seal_number")
+
+	logs, err := sc.sealService.GetSealLogs(sealNumber)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch logs"})
+	}
+
+	return c.JSON(logs)
+}

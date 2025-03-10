@@ -42,4 +42,5 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 
 	// ✅ ดึงซีลตาม ID และ Status (อันนี้เพิ่มเข้ามา)
 	seal.Get("/:id/status/:status", middleware.JWTMiddleware(), sealController.GetSealByIDAndStatusHandler)
+	seal.Get("/check/:seal_number", sealController.CheckSealExistsHandler)
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ✅ JWTMiddleware ใช้ตรวจสอบ Token (ทั้ง PEA API และ Mock JWT)
@@ -77,4 +78,79 @@ func setUserContext(c *fiber.Ctx, user *model.User) {
 	c.Locals("pea_code", user.PeaCode)
 	c.Locals("pea_short", user.PeaShort)
 	c.Locals("pea_name", user.PeaName)
+}
+
+// Middleware สำหรับ Technician
+// ---------------------
+// TechnicianJWTMiddleware ตรวจสอบ JWT สำหรับ Technician
+func TechnicianJWTMiddleware() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// ** ถ้าเป็น Register หรือ Login ให้ข้ามการตรวจสอบ Token **
+		if c.Path() == "/api/technician/register" || c.Path() == "/api/technician/login" {
+			log.Println("🔑 Skipping TechnicianJWTMiddleware for:", c.Path())
+			return c.Next()
+		}
+
+		log.Println("🔍 TechnicianJWTMiddleware is running for:", c.Path())
+
+		authHeader := c.Get("Authorization")
+		if authHeader == "" {
+			log.Println("🚨 Missing Technician Authorization header")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Missing token",
+			})
+		}
+
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			log.Println("🚨 Invalid token format, missing 'Bearer ' prefix")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token format",
+			})
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		log.Println("🔑 Received Technician Token:", tokenString)
+
+		technicianSecretKey := []byte("your-technician-secret-key")
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			return technicianSecretKey, nil
+		})
+		if err != nil || !token.Valid {
+			log.Println("❌ Technician token invalid:", err)
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			log.Println("❌ Technician token claims invalid")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token claims",
+			})
+		}
+
+		role, ok := claims["role"].(string)
+		if !ok || role != "technician" {
+			log.Println("🚫 Access denied: not a technician")
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Access denied: not technician",
+			})
+		}
+
+		techIDFloat, ok := claims["tech_id"].(float64)
+		if !ok {
+			log.Println("🚫 Technician token missing tech_id")
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token: missing tech_id",
+			})
+		}
+
+		log.Println("✅ Technician verified, ID:", uint(techIDFloat))
+
+		c.Locals("tech_id", uint(techIDFloat))
+		c.Locals("role", role)
+
+		return c.Next()
+	}
 }
