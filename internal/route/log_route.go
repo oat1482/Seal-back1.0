@@ -6,8 +6,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func SetupLogRoutes(app *fiber.App, logController *controller.LogController) {
-	api := app.Group("/api")
+// SetupLogRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App เพื่อรองรับการใช้ group
+func SetupLogRoutes(router fiber.Router, logController *controller.LogController) {
+	api := router.Group("/api")
 	logs := api.Group("/logs")
 
 	// ✅ ดึง Log แยกตามประเภท (Created, Issued, Used, Returned)

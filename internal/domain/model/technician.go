@@ -9,7 +9,8 @@ type Technician struct {
 	FirstName    string    `json:"first_name"`
 	LastName     string    `json:"last_name"`
 	Email        string    `gorm:"unique;not null" json:"email"`
-	ElectricCode string    `json:"electric_code"` // รหัสของการไฟฟ้า (ถ้ามี)
+	ElectricCode string    `json:"electric_code"`                // รหัสของการไฟฟ้า (ถ้ามี)
+	PhoneNumber  string    `gorm:"not null" json:"phone_number"` // ✅ เพิ่มเบอร์โทร
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

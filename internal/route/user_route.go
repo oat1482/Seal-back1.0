@@ -5,8 +5,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func SetupUserRoutes(app *fiber.App, userController *controller.UserController) {
-	api := app.Group("/api") // ✅ แก้เป็น /api
+// SetupUserRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App
+// และปรับเป็น /api/users ตามโครงสร้าง group
+func SetupUserRoutes(router fiber.Router, userController *controller.UserController) {
+	api := router.Group("/api")
 	user := api.Group("/users")
 
 	user.Get("/:username", userController.GetUserHandler)

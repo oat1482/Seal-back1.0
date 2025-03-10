@@ -427,3 +427,33 @@ func (sc *SealController) GetSealLogsHandler(c *fiber.Ctx) error {
 
 	return c.JSON(logs)
 }
+
+func (sc *SealController) AssignSealToTechnicianHandler(c *fiber.Ctx) error {
+	assignedBy, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	// ✅ รับข้อมูลจาก Request Body
+	var request struct {
+		TechnicianID uint   `json:"technician_id"`
+		Remark       string `json:"remark"`
+	}
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	sealNumber := c.Params("seal_number")
+
+	// ✅ เรียกใช้ Service ให้ส่งค่าเป็น (sealNumber, techID, assignedBy, remark)
+	err := sc.sealService.AssignSealToTechnician(sealNumber, request.TechnicianID, assignedBy, request.Remark)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":     fmt.Sprintf("ซีล %s ถูก Assign ให้ช่าง ID %d เรียบร้อยแล้ว", sealNumber, request.TechnicianID),
+		"seal_number": sealNumber,
+		"technician":  request.TechnicianID,
+	})
+}

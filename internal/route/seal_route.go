@@ -6,8 +6,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) {
-	api := app.Group("/api")
+// SetupSealRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App เพื่อรองรับการใช้ group
+// SetupSealRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App เพื่อรองรับการใช้ group
+func SetupSealRoutes(router fiber.Router, sealController *controller.SealController) {
+	api := router.Group("/api")
 	seal := api.Group("/seals")
 
 	// ✅ User & Admin สามารถสร้าง Seal ได้
@@ -16,8 +18,9 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 	// ✅ Admin เท่านั้น สามารถ Generate ซิลชุดใหญ่ได้ (แบบเดิม)
 	seal.Post("/generate", middleware.JWTMiddleware(), sealController.GenerateSealsHandler)
 
-	// ✅ ฟีเจอร์ใหม่: Generate ซิลหลายชุด (Batch) ในครั้งเดียว
-	seal.Post("/generate-batches", middleware.JWTMiddleware(), sealController.GenerateSealsMultipleBatchesHandler)
+	// ✅ เพิ่ม API Assign Seal ให้ช่าง (เฉพาะพนักงานไฟฟ้า)
+	// ✅ ใช้ PUT เพื่อให้ตรงกับ Postman
+	seal.Put("/:seal_number/assign", middleware.JWTMiddleware(), sealController.AssignSealToTechnicianHandler)
 
 	// ✅ สแกนบาร์โค้ดเพื่อดึงข้อมูลซิล
 	seal.Post("/scan", middleware.JWTMiddleware(), sealController.ScanSealHandler)
@@ -40,7 +43,9 @@ func SetupSealRoutes(app *fiber.App, sealController *controller.SealController) 
 	// ✅ ดึงซีลตาม Status
 	seal.Get("/status/:status", sealController.GetSealsByStatusHandler)
 
-	// ✅ ดึงซีลตาม ID และ Status (อันนี้เพิ่มเข้ามา)
+	// ✅ ดึงซีลตาม ID และ Status
 	seal.Get("/:id/status/:status", middleware.JWTMiddleware(), sealController.GetSealByIDAndStatusHandler)
+
+	// ✅ ตรวจสอบการมีอยู่ของ Seal ตามเลข
 	seal.Get("/check/:seal_number", sealController.CheckSealExistsHandler)
 }

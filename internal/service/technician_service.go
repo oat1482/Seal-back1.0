@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"fmt"
+
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/domain/repository"
 	"github.com/golang-jwt/jwt/v5"
@@ -25,6 +27,7 @@ func NewTechnicianService(repo *repository.TechnicianRepository) *TechnicianServ
 }
 
 // Register สำหรับลงทะเบียนช่างใหม่
+// Register สำหรับลงทะเบียนช่างใหม่
 func (s *TechnicianService) Register(tech *model.Technician) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(tech.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -33,6 +36,10 @@ func (s *TechnicianService) Register(tech *model.Technician) error {
 	tech.Password = string(hashedPassword)
 	tech.CreatedAt = time.Now()
 	tech.UpdatedAt = time.Now()
+
+	// 🔍 Debug Technician Data ก่อนบันทึก
+	fmt.Println("🔍 Debug Technician Data:", tech)
+
 	return s.repo.Create(tech)
 }
 

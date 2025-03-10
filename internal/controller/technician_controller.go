@@ -3,6 +3,8 @@ package controller
 import (
 	"log"
 
+	"fmt"
+
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
@@ -72,6 +74,9 @@ func (tc *TechnicianController) GetAssignedSealsHandler(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
+
+	fmt.Println("✅ Technician ID from Token:", techID) // ✅ Debug Log
+
 	seals, err := tc.sealService.GetSealsByTechnician(techID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})

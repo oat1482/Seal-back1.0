@@ -405,7 +405,8 @@ func (s *SealService) CheckSealBeforeGenerate(sealNumber string) (bool, error) {
 	}
 	return false, nil
 }
-func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint) error {
+func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint, issuedBy uint, remark string) error {
+	// อัพเดตค่าในฐานข้อมูล
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
 		return errors.New("ไม่พบซิลในระบบ")
@@ -422,8 +423,8 @@ func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint) err
 		}
 
 		logEntry := model.Log{
-			UserID: techID,
-			Action: fmt.Sprintf("ได้รับซิล %s", sealNumber),
+			UserID: issuedBy, // ใช้ user ที่ทำการ assign
+			Action: fmt.Sprintf("จ่ายซิล %s ให้ช่าง %d - หมายเหตุ: %s", sealNumber, techID, remark),
 		}
 		return s.logRepo.Create(&logEntry)
 	})

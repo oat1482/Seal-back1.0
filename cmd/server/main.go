@@ -49,12 +49,17 @@ func generateToken(user *model.User, wg *sync.WaitGroup, tokenChan chan<- string
 }
 
 func main() {
+	// แสดง Log ไฟล์/บรรทัดด้วย
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	if err := godotenv.Load(); err != nil {
 		log.Println("⚠️ Warning: No .env file found. Using system environment variables.")
 	}
 
+	// ✅ Init DB
 	config.InitDB()
 
+	// ✅ Database Migrations
 	log.Println("🔧 Running database migrations...")
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -66,7 +71,10 @@ func main() {
 		log.Println("✅ Migrations completed!")
 	}()
 
+	// ✅ สร้าง Fiber App
 	app := fiber.New()
+
+	// ✅ ตั้งค่า CORS
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "http://192.168.2.19:5173, https://192.168.2.19:5173",
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
@@ -76,6 +84,7 @@ func main() {
 		MaxAge:           12 * 3600,
 	}))
 
+	// ✅ Handle Preflight OPTIONS Request
 	app.Options("*", func(c *fiber.Ctx) error {
 		if c.Get("Origin") != "" {
 			c.Set("Access-Control-Allow-Origin", c.Get("Origin"))
@@ -86,33 +95,56 @@ func main() {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	app.Use(middleware.JWTMiddleware())
+	// 🔴 ไม่ใช้ app.Use(middleware.JWTMiddleware()) แบบ Global
+	// log.Println("🔍 Setting up Middleware...")
+	// app.Use(middleware.JWTMiddleware()) // ลบออก
 
+	// ✅ สร้าง Repositories
 	userRepo := repository.NewUserRepository(config.DB)
 	sealRepo := repository.NewSealRepository(config.DB)
 	transactionRepo := repository.NewTransactionRepository(config.DB)
 	logRepo := repository.NewLogRepository(config.DB)
 	technicianRepo := repository.NewTechnicianRepository(config.DB)
 
+	// ✅ สร้าง Services
 	userService := service.NewUserService(userRepo)
 	sealService := service.NewSealService(sealRepo, transactionRepo, logRepo, config.DB)
 	logService := service.NewLogService(logRepo)
 	technicianService := service.NewTechnicianService(technicianRepo)
 
-	// แก้ไข: เพิ่ม sealService เป็นอาร์กิวเมนต์ที่สอง
+	// ✅ สร้าง Controllers
 	technicianController := controller.NewTechnicianController(technicianService, sealService)
-
 	userController := controller.NewUserController(userService)
 	sealController := controller.NewSealController(sealService)
 	logController := controller.NewLogController(logService)
 
-	route.SetupUserRoutes(app, userController)
-	route.SetupSealRoutes(app, sealController)
-	route.SetupTechnicianRoutes(app, technicianController)
+	// -------------------------------
+	// 1) Public (No Token) Routes
+	// -------------------------------
+	// เช่น Technician Register/Login
+	publicGroup := app.Group("")
+	route.SetupTechnicianRoutes(publicGroup, technicianController)
+	// ถ้ามี Register/Login อื่นอีก ก็ใส่ในกลุ่มนี้ได้
 
-	app.Use("/logs", middleware.AdminOnlyMiddleware)
-	route.SetupLogRoutes(app, logController)
+	// -------------------------------
+	// 2) Protected (Token) Routes
+	// -------------------------------
+	// กลุ่มนี้จะใช้ JWTMiddleware
+	secureGroup := app.Group("", middleware.JWTMiddleware())
 
+	// ✅ User Routes
+	route.SetupUserRoutes(secureGroup, userController)
+	// ✅ Seal Routes
+	route.SetupSealRoutes(secureGroup, sealController)
+
+	// ✅ Admin Logs
+	secureGroup.Use("/logs", middleware.AdminOnlyMiddleware)
+	route.SetupLogRoutes(secureGroup, logController)
+
+	// ✅ รอ Migrations เสร็จ
+	wg.Wait()
+
+	// ✅ กำหนด Port
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"

@@ -29,3 +29,13 @@ func (r *TechnicianRepository) FindByUsername(username string) (*model.Technicia
 	}
 	return &tech, nil
 }
+func (r *TechnicianRepository) FindByID(techID uint) (*model.Technician, error) {
+	var tech model.Technician
+	if err := r.db.Where("id = ?", techID).First(&tech).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("ไม่พบช่างในระบบ")
+		}
+		return nil, err
+	}
+	return &tech, nil
+}
