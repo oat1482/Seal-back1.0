@@ -371,12 +371,15 @@ func incrementSealNumber(current string) string {
 	return fmt.Sprintf("%s%0*d", prefix, len(numberPart), num)
 }
 
-// ✅ API เช็คว่าหมายเลข Seal มีอยู่ในระบบหรือไม่
 func (sc *SealController) CheckSealExistsHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
 	log.Println("🔍 Checking Seal:", sealNumber)
 
-	exists, err := sc.sealService.CheckSealBeforeGenerate(sealNumber)
+	// สร้างเลขท้ายที่จะตรวจสอบ (ตามที่คุณต้องการ)
+	lastNumbers := []int{16, 17, 18}
+
+	// เรียก `CheckSealBeforeGenerate` โดยส่ง prefix และเลขท้าย
+	exists, err := sc.sealService.CheckSealBeforeGenerate(sealNumber[:len(sealNumber)-2], lastNumbers)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}

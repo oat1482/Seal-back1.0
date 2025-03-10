@@ -394,16 +394,28 @@ func (s *SealService) GetSealsByTechnician(techID uint) ([]model.Seal, error) {
 	return seals, nil
 }
 
-// ✅ ตรวจสอบก่อนเจนว่าเลขซ้ำไหม
-func (s *SealService) CheckSealBeforeGenerate(sealNumber string) (bool, error) {
-	exists, err := s.repo.CheckSealExists(sealNumber)
-	if err != nil {
-		return false, err
+// ✅ ฟังก์ชันตรวจสอบว่าหมายเลข Seal มีอยู่หรือไม่
+func (s *SealService) CheckSealBeforeGenerate(sealPrefix string, lastNumbers []int) (bool, error) {
+	missingSeals := []int{}
+
+	// ตรวจสอบเลขท้ายที่ต้องการเจนจ่าย
+	for _, num := range lastNumbers {
+		sealNumber := fmt.Sprintf("%s%02d", sealPrefix, num) // สร้างเลข Seal เช่น F11620000051016
+		exists, err := s.repo.CheckSealExists(sealNumber)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			missingSeals = append(missingSeals, num)
+		}
 	}
-	if exists {
-		return true, errors.New("หมายเลข Seal นี้มีอยู่ในระบบแล้ว")
+
+	// ถ้ามีเลขที่หายไป แจ้งเตือน
+	if len(missingSeals) > 0 {
+		return false, fmt.Errorf("หมายเลข Seal ไม่พบในระบบ: %v", missingSeals)
 	}
-	return false, nil
+
+	return true, nil
 }
 func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint, issuedBy uint, remark string) error {
 	// อัพเดตค่าในฐานข้อมูล
