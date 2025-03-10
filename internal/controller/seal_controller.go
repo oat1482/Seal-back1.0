@@ -199,31 +199,31 @@ func (sc *SealController) GetSealHandler(c *fiber.Ctx) error {
 //
 // ------------------------------------------------------------------- //
 func (sc *SealController) IssueSealHandler(c *fiber.Ctx) error {
-	sealNumber := c.Params("seal_number")
+	sealNumber := c.Params("seal_number") // รับค่า seal_number จาก URL เช่น /api/seals/pea124/issue
 
-	var request struct {
-		IssuedTo     uint   `json:"issued_to"`     // รหัสพนักงานที่รับซิล
-		EmployeeCode string `json:"employee_code"` // รหัสพนักงาน
-		Remark       string `json:"remark"`        // หมายเหตุเพิ่มเติม
+	// ✅ ดึงค่าจาก Query Parameters (ถ้ามี)
+	issuedToParam := c.Query("issued_to", "3")        // ค่า default = 3
+	employeeCode := c.Query("employee_code", "12345") // ค่า default = 12345
+	remark := c.Query("remark", "จ่ายให้พนักงานตามคำสั่ง")
+
+	// ✅ แปลงค่า issuedToParam จาก string -> uint
+	issuedTo, err := strconv.ParseUint(issuedToParam, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid issued_to parameter"})
 	}
 
-	if err := c.BodyParser(&request); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-	if request.IssuedTo == 0 || request.EmployeeCode == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing required fields"})
-	}
-
-	if err := sc.sealService.IssueSealWithDetails(sealNumber, request.IssuedTo, request.EmployeeCode, request.Remark); err != nil {
+	// ✅ เรียกใช้งาน Service โดยไม่ต้องใช้ Request Body
+	err = sc.sealService.IssueSealWithDetails(sealNumber, uint(issuedTo), employeeCode, remark)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
 		"message":       "จ่าย Seal เรียบร้อย",
 		"seal_number":   sealNumber,
-		"issued_to":     request.IssuedTo,
-		"employee_code": request.EmployeeCode,
-		"remark":        request.Remark,
+		"issued_to":     issuedTo,
+		"employee_code": employeeCode,
+		"remark":        remark,
 	})
 }
 

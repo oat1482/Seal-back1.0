@@ -16,6 +16,12 @@ func SetupTechnicianRoutes(router fiber.Router, techController *controller.Techn
 	// ✅ ใช้ Middleware เฉพาะเส้นทางที่ต้องใช้ Token
 	protectedTech := tech.Group("", middleware.TechnicianJWTMiddleware())
 
-	// ✅ ตัวอย่าง: ดูซีลที่ assign ให้ช่าง ต้องมี Token
+	// ✅ ดึงซีลที่ถูก Assign ให้ช่าง
 	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)
+
+	// ✅ **เพิ่ม API ติดตั้ง Seal**
+	protectedTech.Put("/seals/install", techController.InstallSealHandler)
+
+	// ✅ **เพิ่ม API คืน Seal**
+	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler)
 }

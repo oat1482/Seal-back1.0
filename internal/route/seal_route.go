@@ -48,4 +48,10 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 
 	// ✅ ตรวจสอบการมีอยู่ของ Seal ตามเลข
 	seal.Get("/check/:seal_number", sealController.CheckSealExistsHandler)
+	// ✅ ช่างติดตั้ง Seal (เฉพาะที่ได้รับมอบหมาย)
+	//seal.Put("/:seal_number/install", middleware.TechnicianJWTMiddleware(), sealController.InstallSealHandler)
+
+	// ✅ ช่างคืน Seal
+	//seal.Put("/:seal_number/return", middleware.TechnicianJWTMiddleware(), sealController.ReturnSealHandler)
+
 }

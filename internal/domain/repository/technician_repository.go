@@ -39,3 +39,23 @@ func (r *TechnicianRepository) FindByID(techID uint) (*model.Technician, error) 
 	}
 	return &tech, nil
 }
+func (r *TechnicianRepository) FindSealByNumber(sealNumber string) (*model.Seal, error) {
+	var seal model.Seal
+	if err := r.db.Where("seal_number = ?", sealNumber).First(&seal).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("ไม่พบซีลในระบบ")
+		}
+		return nil, err
+	}
+	return &seal, nil
+}
+
+// ✅ อัปเดตข้อมูลซีล
+func (r *TechnicianRepository) UpdateSeal(seal *model.Seal) error {
+	return r.db.Save(seal).Error
+}
+
+// ✅ บันทึก Log
+func (r *TechnicianRepository) CreateLog(log *model.Log) error {
+	return r.db.Create(log).Error
+}
