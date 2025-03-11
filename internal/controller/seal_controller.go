@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 
+	"strings"
+
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
 )
@@ -501,4 +503,29 @@ func (sc *SealController) IssueMultipleSealsHandler(c *fiber.Ctx) error {
 		"message": "Issued multiple seals successfully",
 		"seals":   issuedSeals, // The details of each seal you successfully issued
 	})
+}
+func (sc *SealController) CheckMultipleSealsHandler(c *fiber.Ctx) error {
+	// 1) Read the query param "seal_numbers"
+	rawParam := c.Query("seal_numbers", "")
+	if rawParam == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "No seal_numbers provided",
+		})
+	}
+
+	// If you’re expecting a comma-separated string, do:
+	parts := strings.Split(rawParam, ",")
+	// Trim spaces
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+
+	// 2) Pass to service
+	unavailable, err := sc.sealService.CheckMultipleSeals(parts)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 3) Return JSON with any missing/unavailable seals
+	return c.JSON(fiber.Map{"unavailable": unavailable})
 }

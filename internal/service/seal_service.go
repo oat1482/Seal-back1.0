@@ -555,3 +555,17 @@ func (s *SealService) IssueMultipleSeals(
 	// 4) Return the updated seals
 	return sealsToIssue, nil
 }
+func (s *SealService) CheckMultipleSeals(sealNumbers []string) ([]string, error) {
+	var unavailable []string
+	for _, sn := range sealNumbers {
+		exists, err := s.repo.CheckSealExists(sn)
+		if err != nil {
+			return nil, err // DB error
+		}
+		if !exists {
+			// Seal not found in DB
+			unavailable = append(unavailable, sn)
+		}
+	}
+	return unavailable, nil
+}

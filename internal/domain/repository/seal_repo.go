@@ -112,3 +112,13 @@ func (r *SealRepository) CheckSealExists(sealNumber string) (bool, error) {
 	}
 	return count > 0, nil
 }
+
+// func (r *SealRepository) CheckSealExists(sealNumber string) (bool, error) {
+//     var count int64
+//     if err := r.db.Model(&model.Seal{}).
+//        Where("seal_number = ?", sealNumber).
+//        Count(&count).Error; err != nil {
+//         return false, err
+//     }
+//     return count > 0, nil
+// }
