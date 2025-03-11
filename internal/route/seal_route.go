@@ -6,54 +6,54 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// SetupSealRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App เพื่อรองรับการใช้ group
-// SetupSealRoutes เปลี่ยนให้รับ fiber.Router แทน *fiber.App เพื่อรองรับการใช้ group
+// SetupSealRoutes sets up routes for "seals" under /api/seals
 func SetupSealRoutes(router fiber.Router, sealController *controller.SealController) {
 	api := router.Group("/api")
 	seal := api.Group("/seals")
 
-	// ✅ User & Admin สามารถสร้าง Seal ได้
+	// -- 1) POST /api/seals/ : create a new Seal
 	seal.Post("/", middleware.JWTMiddleware(), sealController.CreateSealHandler)
 
-	// ✅ Admin เท่านั้น สามารถ Generate ซิลชุดใหญ่ได้ (แบบเดิม)
+	// -- 2) POST /api/seals/generate : admin can generate multiple seals
 	seal.Post("/generate", middleware.JWTMiddleware(), sealController.GenerateSealsHandler)
 
-	// ✅ เพิ่ม API Assign Seal ให้ช่าง (เฉพาะพนักงานไฟฟ้า)
-	// ✅ ใช้ PUT เพื่อให้ตรงกับ Postman
+	// -- 3) PUT /api/seals/:seal_number/assign : assign a seal to a technician
 	seal.Put("/:seal_number/assign", middleware.JWTMiddleware(), sealController.AssignSealToTechnicianHandler)
 
-	// ✅ สแกนบาร์โค้ดเพื่อดึงข้อมูลซิล
+	// -- 4) POST /api/seals/scan : scan a barcode
 	seal.Post("/scan", middleware.JWTMiddleware(), sealController.ScanSealHandler)
 
-	// ✅ รายงานสถานะซิล (Admin เท่านั้น)
+	// -- 5) GET /api/seals/report : admin-only report
 	seal.Get("/report", middleware.JWTMiddleware(), sealController.GetSealReportHandler)
 
-	// ✅ ทุกคนสามารถอ่านข้อมูลซิลได้
-	seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
+	// -- 6) GET /api/seals/check : check multiple seals with query params
+	seal.Get("/check", sealController.CheckMultipleSealsHandler)
 
-	// ✅ Admin เท่านั้น สามารถออกซิลให้ User ได้
-	seal.Put("/:seal_number/issue", middleware.JWTMiddleware(), sealController.IssueSealHandler)
-
-	// ✅ User ใช้ซิลที่ออกให้แล้ว
-	seal.Put("/:seal_number/use", middleware.JWTMiddleware(), sealController.UseSealHandler)
-
-	// ✅ User คืนซิลหลังจากใช้งาน
-	seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
-
-	// ✅ ดึงซีลตาม Status
-	seal.Get("/status/:status", sealController.GetSealsByStatusHandler)
-
-	// ✅ ดึงซีลตาม ID และ Status
-	seal.Get("/:id/status/:status", middleware.JWTMiddleware(), sealController.GetSealByIDAndStatusHandler)
-
-	// ✅ ตรวจสอบการมีอยู่ของ Seal ตามเลข
+	// -- 7) GET /api/seals/check/:seal_number : check existence of a single seal
 	seal.Get("/check/:seal_number", sealController.CheckSealExistsHandler)
-	// ✅ ช่างติดตั้ง Seal (เฉพาะที่ได้รับมอบหมาย)
-	//seal.Put("/:seal_number/install", middleware.TechnicianJWTMiddleware(), sealController.InstallSealHandler)
 
-	// ✅ ช่างคืน Seal
-	//seal.Put("/:seal_number/return", middleware.TechnicianJWTMiddleware(), sealController.ReturnSealHandler)
-
+	// -- 8) POST /api/seals/issue-multiple : bulk-issue seals from base number
 	seal.Post("/issue-multiple", middleware.JWTMiddleware(), sealController.IssueMultipleSealsHandler)
 
+	// -- 9) GET /api/seals/status/:status : get seals by status
+	seal.Get("/status/:status", sealController.GetSealsByStatusHandler)
+
+	// -- 10) GET /api/seals/:id/status/:status : get seal by ID & status
+	seal.Get("/:id/status/:status", middleware.JWTMiddleware(), sealController.GetSealByIDAndStatusHandler)
+
+	// -- 11) PUT /api/seals/:seal_number/issue : admin issues a seal to a user
+	seal.Put("/:seal_number/issue", middleware.JWTMiddleware(), sealController.IssueSealHandler)
+
+	// -- 12) PUT /api/seals/:seal_number/use : user uses a previously issued seal
+	seal.Put("/:seal_number/use", middleware.JWTMiddleware(), sealController.UseSealHandler)
+
+	// -- 13) PUT /api/seals/:seal_number/return : user returns a seal after use
+	seal.Put("/:seal_number/return", middleware.JWTMiddleware(), sealController.ReturnSealHandler)
+
+	// -- 14) GET /api/seals/:seal_number : get a single seal by number (wildcard route - put last!)
+	seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
+
+	// -- Potential routes for technicians commented out:
+	// seal.Put("/:seal_number/install", middleware.TechnicianJWTMiddleware(), sealController.InstallSealHandler)
+	// seal.Put("/:seal_number/return", middleware.TechnicianJWTMiddleware(), sealController.ReturnSealHandler)
 }
