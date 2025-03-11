@@ -569,3 +569,32 @@ func (s *SealService) CheckMultipleSeals(sealNumbers []string) ([]string, error)
 	}
 	return unavailable, nil
 }
+
+// ✅ เช็คว่า Seal ไหนมีในระบบ
+func (s *SealService) CheckSealAvailability(sealNumbers []string) ([]string, []string, error) {
+	var foundSeals []string
+	var missingSeals []string
+
+	// ✅ ดึงซีลที่มีอยู่ใน Database
+	var seals []model.Seal
+	if err := s.db.Where("seal_number IN ?", sealNumbers).Find(&seals).Error; err != nil {
+		return nil, nil, err
+	}
+
+	// ✅ ตรวจสอบว่าซีลไหนมีในฐานข้อมูล
+	sealMap := make(map[string]bool)
+	for _, seal := range seals {
+		sealMap[seal.SealNumber] = true
+	}
+
+	// ✅ แยกซีลที่เจอกับซีลที่ไม่มี
+	for _, seal := range sealNumbers {
+		if sealMap[seal] {
+			foundSeals = append(foundSeals, seal)
+		} else {
+			missingSeals = append(missingSeals, seal)
+		}
+	}
+
+	return foundSeals, missingSeals, nil
+}

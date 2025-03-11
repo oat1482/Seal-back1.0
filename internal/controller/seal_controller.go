@@ -529,3 +529,32 @@ func (sc *SealController) CheckMultipleSealsHandler(c *fiber.Ctx) error {
 	// 3) Return JSON with any missing/unavailable seals
 	return c.JSON(fiber.Map{"unavailable": unavailable})
 }
+
+// ✅ ตรวจสอบหลายซีล
+func (sc *SealController) CheckSealsHandler(c *fiber.Ctx) error {
+	var request struct {
+		SealNumbers []string `json:"seal_numbers"`
+	}
+
+	// 📌 อ่านค่าจาก Body
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid request format"})
+	}
+
+	// 📌 ถ้าไม่มีซีลให้ตรวจสอบ
+	if len(request.SealNumbers) == 0 {
+		return c.Status(400).JSON(fiber.Map{"error": "seal_numbers is required"})
+	}
+
+	// ✅ ใช้ Service ตรวจสอบในฐานข้อมูล
+	foundSeals, missingSeals, err := sc.sealService.CheckSealAvailability(request.SealNumbers)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
+	}
+
+	// ✅ ส่งผลลัพธ์กลับไปที่ Vue.js
+	return c.JSON(fiber.Map{
+		"เจอ": foundSeals, // ✅ ซีลที่เจอ
+		"ซีลที่ไม่มีในระบบเธอสามารถเพิ่มได้": missingSeals, // ❌ ซีลที่ไม่มีในระบบ
+	})
+}

@@ -52,6 +52,7 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 
 	// -- 14) GET /api/seals/:seal_number : get a single seal by number (wildcard route - put last!)
 	seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
+	seal.Post("/check", sealController.CheckSealsHandler)
 
 	// -- Potential routes for technicians commented out:
 	// seal.Put("/:seal_number/install", middleware.TechnicianJWTMiddleware(), sealController.InstallSealHandler)

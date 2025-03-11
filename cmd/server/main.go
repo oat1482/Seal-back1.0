@@ -124,7 +124,6 @@ func main() {
 	// เช่น Technician Register/Login
 	publicGroup := app.Group("")
 	route.SetupTechnicianRoutes(publicGroup, technicianController)
-	// ถ้ามี Register/Login อื่นอีก ก็ใส่ในกลุ่มนี้ได้
 
 	// -------------------------------
 	// 2) Protected (Token) Routes
@@ -134,6 +133,7 @@ func main() {
 
 	// ✅ User Routes
 	route.SetupUserRoutes(secureGroup, userController)
+
 	// ✅ Seal Routes
 	route.SetupSealRoutes(secureGroup, sealController)
 
