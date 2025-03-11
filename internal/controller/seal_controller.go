@@ -460,3 +460,45 @@ func (sc *SealController) AssignSealToTechnicianHandler(c *fiber.Ctx) error {
 		"technician":  request.TechnicianID,
 	})
 }
+func (sc *SealController) IssueMultipleSealsHandler(c *fiber.Ctx) error {
+	// 1) Parse JSON input
+	var req struct {
+		BaseSealNumber string `json:"base_seal_number"` // e.g. "F11620000051015"
+		LastNumbers    []int  `json:"last_numbers"`     // e.g. [16, 17, 18]
+		IssuedTo       uint   `json:"issued_to"`
+		EmployeeCode   string `json:"employee_code"`
+		Remark         string `json:"remark"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid JSON input"})
+	}
+
+	// Basic validation
+	if req.BaseSealNumber == "" || len(req.LastNumbers) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Must provide base_seal_number and last_numbers"})
+	}
+
+	// 2) (Optional) Extract prefix from base seal number
+	//    If your logic is always "remove last 2 digits," do:
+	//    prefix := req.BaseSealNumber[:len(req.BaseSealNumber)-2]
+	//    But if your suffix might be longer, use a regex approach:
+	re := regexp.MustCompile(`^([A-Za-z]*)(\d+)$`)
+	matches := re.FindStringSubmatch(req.BaseSealNumber)
+	if len(matches) != 3 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid seal format in base_seal_number"})
+	}
+	prefix := matches[1]
+	baseNumStr := matches[2] // e.g. "11620000051015" minus the leading letter(s)
+
+	// 3) Call service method
+	issuedSeals, err := sc.sealService.IssueMultipleSeals(prefix, baseNumStr, req.LastNumbers, req.IssuedTo, req.EmployeeCode, req.Remark)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// 4) Return success JSON
+	return c.JSON(fiber.Map{
+		"message": "Issued multiple seals successfully",
+		"seals":   issuedSeals, // The details of each seal you successfully issued
+	})
+}

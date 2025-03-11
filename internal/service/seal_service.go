@@ -481,3 +481,77 @@ func (s *SealService) GetSealLogs(sealNumber string) ([]model.Log, error) {
 	}
 	return logs, nil
 }
+func (s *SealService) IssueMultipleSeals(
+	prefix string, // e.g. "F116200000510"
+	baseNumStr string, // e.g. "15"
+	lastNumbers []int, // e.g. [16, 17, 18]
+	issuedTo uint, // e.g. 3
+	employeeCode string, // e.g. "12345"
+	remark string, // e.g. "จ่ายให้พนักงานตามคำสั่ง"
+) ([]model.Seal, error) {
+
+	// 1) Figure out how many digits were in the baseNumStr (for zero-padding)
+	digitCount := len(baseNumStr) // e.g. 14 digits
+	var sealsToIssue []model.Seal
+
+	// 2) Build each full seal number
+	for _, num := range lastNumbers {
+		// Zero-pad each 'num' to match the length
+		fullSealNumber := fmt.Sprintf("%s%0*d", prefix, digitCount, num)
+
+		// Check existence
+		seal, err := s.repo.FindByNumber(fullSealNumber)
+		if err != nil {
+			// "seal not found" or DB error => immediate fail
+			return nil, fmt.Errorf("ไม่พบซีลในระบบ: %s", fullSealNumber)
+		}
+
+		// Check if it's in "พร้อมใช้งาน" or whatever your domain requires
+		if seal.Status != "พร้อมใช้งาน" {
+			return nil, fmt.Errorf("ซีล %s ไม่ได้อยู่ในสถานะ 'พร้อมใช้งาน'", fullSealNumber)
+		}
+
+		// If all is good, add to slice for final issuing
+		sealsToIssue = append(sealsToIssue, *seal)
+	}
+
+	// 3) If we got here, all seals exist and are ready. Let's do an issuing transaction
+	now := time.Now()
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		for i := range sealsToIssue {
+			sealsToIssue[i].Status = "จ่าย"
+			sealsToIssue[i].IssuedTo = &issuedTo
+			sealsToIssue[i].AssignedToTechnician = &issuedTo
+			sealsToIssue[i].IssuedAt = &now
+			sealsToIssue[i].EmployeeCode = employeeCode
+			sealsToIssue[i].IssueRemark = remark
+
+			// Update each seal
+			if err := s.repo.Update(&sealsToIssue[i]); err != nil {
+				return err
+			}
+
+			// Create a log for each
+			logEntry := model.Log{
+				UserID: issuedTo,
+				Action: fmt.Sprintf(
+					"จ่ายซิล %s ให้พนักงาน %d (รหัส: %s) - หมายเหตุ: %s",
+					sealsToIssue[i].SealNumber,
+					issuedTo,
+					employeeCode,
+					remark,
+				),
+			}
+			if err := s.logRepo.Create(&logEntry); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 4) Return the updated seals
+	return sealsToIssue, nil
+}

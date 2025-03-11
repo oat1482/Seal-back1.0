@@ -54,4 +54,6 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 	// ✅ ช่างคืน Seal
 	//seal.Put("/:seal_number/return", middleware.TechnicianJWTMiddleware(), sealController.ReturnSealHandler)
 
+	seal.Post("/issue-multiple", middleware.JWTMiddleware(), sealController.IssueMultipleSealsHandler)
+
 }
