@@ -575,19 +575,19 @@ func (s *SealService) CheckSealAvailability(sealNumbers []string) ([]string, []s
 	var foundSeals []string
 	var missingSeals []string
 
-	// ✅ ดึงซีลที่มีอยู่ใน Database
+	//  ดึงเฉพาะซีลที่มีอยู่ใน Database และมีสถานะ "พร้อมใช้งาน"
 	var seals []model.Seal
-	if err := s.db.Where("seal_number IN ?", sealNumbers).Find(&seals).Error; err != nil {
+	if err := s.db.Where("seal_number IN ? AND status = ?", sealNumbers, "พร้อมใช้งาน").Find(&seals).Error; err != nil {
 		return nil, nil, err
 	}
 
-	// ✅ ตรวจสอบว่าซีลไหนมีในฐานข้อมูล
+	// ตรวจสอบว่าซีลไหนมีในฐานข้อมูล
 	sealMap := make(map[string]bool)
 	for _, seal := range seals {
 		sealMap[seal.SealNumber] = true
 	}
 
-	// ✅ แยกซีลที่เจอกับซีลที่ไม่มี
+	//  แยกซีลที่เจอกับซีลที่ไม่มี
 	for _, seal := range sealNumbers {
 		if sealMap[seal] {
 			foundSeals = append(foundSeals, seal)
