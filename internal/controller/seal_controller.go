@@ -552,9 +552,9 @@ func (sc *SealController) CheckSealsHandler(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
 	}
 
-	// ✅ ส่งผลลัพธ์กลับไปที่ Vue.js
 	return c.JSON(fiber.Map{
-		"เจอ": foundSeals, // ✅ ซีลที่เจอ
-		"ซีลที่ไม่มีในระบบเธอสามารถเพิ่มได้": missingSeals, // ❌ ซีลที่ไม่มีในระบบ
+		"found":       foundSeals,   // ✅ ซีลที่เจอ
+		"unavailable": missingSeals, // ❌ ซีลที่ไม่มีในระบบ
 	})
+
 }
