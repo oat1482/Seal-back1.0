@@ -211,15 +211,35 @@ func (sc *SealController) IssueSealHandler(c *fiber.Ctx) error {
 	// ✅ แปลงค่า issuedToParam จาก string -> uint
 	issuedTo, err := strconv.ParseUint(issuedToParam, 10, 32)
 	if err != nil {
+		// หมอ: เพิ่มการตรวจสอบค่าที่ไม่ถูกต้องของ issued_to
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid issued_to parameter"})
+	}
+
+	// ✅ ดึงข้อมูลซีลจากฐานข้อมูล
+	seal, err := sc.sealService.GetSealByNumber(sealNumber)
+	if err != nil {
+		// หมอ: ป้องกันการเกิดปัญหากับฐานข้อมูล
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database query failed"})
+	}
+	if seal == nil {
+		// หมอ: ป้องกันการอัปเดตซีลที่ไม่มีอยู่จริง
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
+	}
+
+	// ✅ ตรวจสอบสถานะของซีลก่อนดำเนินการจ่าย
+	if seal.Status != "พร้อมใช้งาน" {
+		// หมอ: ป้องกันการอัปเดตซีลที่ไม่สามารถจ่ายได้
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Seal is not available for issuing"})
 	}
 
 	// ✅ เรียกใช้งาน Service โดยไม่ต้องใช้ Request Body
 	err = sc.sealService.IssueSealWithDetails(sealNumber, uint(issuedTo), employeeCode, remark)
 	if err != nil {
+		// หมอ: จัดการข้อผิดพลาดที่เกิดขึ้นจาก Service Layer
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// หมอ: ส่งข้อมูลการจ่ายซีลกลับไปให้ Frontend
 	return c.JSON(fiber.Map{
 		"message":       "จ่าย Seal เรียบร้อย",
 		"seal_number":   sealNumber,
