@@ -418,27 +418,45 @@ func (s *SealService) CheckSealBeforeGenerate(sealPrefix string, lastNumbers []i
 	return true, nil
 }
 func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint, issuedBy uint, remark string) error {
-	// อัพเดตค่าในฐานข้อมูล
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
-		return errors.New("ไม่พบซิลในระบบ")
+		return err
 	}
-	if seal.Status != "จ่าย" {
-		return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะ Assign ได้")
+
+	// Accept both statuses: "พร้อมใช้งาน" and "จ่าย"
+	if seal.Status != "พร้อมใช้งาน" && seal.Status != "จ่าย" {
+		return errors.New("ซิลต้องอยู่ในสถานะ 'พร้อมใช้งาน' หรือ 'จ่าย' เท่านั้นจึงจะ Assign ได้")
+	}
+
+	now := time.Now()
+
+	// If status is "พร้อมใช้งาน", change it to "จ่าย" automatically
+	if seal.Status == "พร้อมใช้งาน" {
+		seal.Status = "จ่าย"
+		seal.IssuedAt = &now
+		seal.IssuedBy = &issuedBy
 	}
 
 	seal.AssignedToTechnician = &techID
+	seal.IssueRemark = remark
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := s.repo.Update(seal); err != nil {
+		if err := tx.Save(seal).Error; err != nil {
 			return err
 		}
 
-		logEntry := model.Log{
-			UserID: issuedBy, // ใช้ user ที่ทำการ assign
-			Action: fmt.Sprintf("จ่ายซิล %s ให้ช่าง %d - หมายเหตุ: %s", sealNumber, techID, remark),
+		// Create log entry
+		log := model.Log{
+			UserID:    issuedBy,
+			Action:    fmt.Sprintf("Assigned seal %s to technician ID %d", sealNumber, techID),
+			Timestamp: now,
 		}
-		return s.logRepo.Create(&logEntry)
+
+		if err := tx.Create(&log).Error; err != nil {
+			return err
+		}
+
+		return nil
 	})
 }
 
@@ -570,7 +588,6 @@ func (s *SealService) CheckMultipleSeals(sealNumbers []string) ([]string, error)
 	return unavailable, nil
 }
 
-// ✅ เช็คว่า Seal ไหนมีในระบบ
 func (s *SealService) CheckSealAvailability(sealNumbers []string) ([]string, []string, error) {
 	var foundSeals []string
 	var missingSeals []string

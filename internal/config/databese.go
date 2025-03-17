@@ -6,8 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	migrations "github.com/Kev2406/PEA/internal/infrastructure/database"
-	"gorm.io/driver/sqlserver" // ✅ ใช้เฉพาะ SQL Server
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -16,32 +15,23 @@ var DB *gorm.DB
 func InitDB() {
 	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
 	if err != nil {
-		log.Fatalf("❌ Invalid database port: %v", err)
+		log.Fatalf("Invalid database port: %v", err)
 	}
 
-	// ✅ ใช้ SQL Server เท่านั้น
-	dsn := fmt.Sprintf("sqlserver://%s:%s@%s:%d?database=%s",
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=disable",
+		os.Getenv("DB_HOST"),
 		os.Getenv("DB_USER"),
 		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB_HOST"),
-		port,
 		os.Getenv("DB_NAME"),
+		port,
 	)
 
-	// ✅ ปิด Foreign Key Constraint ตอน Migration
-	DB, err = gorm.Open(sqlserver.Open(dsn), &gorm.Config{
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 		DisableForeignKeyConstraintWhenMigrating: true,
 	})
-
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to SQL Server: %v", err)
+		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 
-	fmt.Println("✅ Connected to SQL Server successfully!")
-
-	// ✅ เรียกใช้งาน Migration ถ้ามี
-	err = migrations.CreateStoreTable(DB)
-	if err != nil {
-		log.Fatalf("❌ Migration error: %v", err)
-	}
+	fmt.Println("✅ Database connected successfully!")
 }

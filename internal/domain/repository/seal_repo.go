@@ -23,7 +23,44 @@ func (r *SealRepository) Create(seal *model.Seal) error {
 }
 
 func (r *SealRepository) CreateMultiple(seals []model.Seal) error {
-	return r.db.Create(&seals).Error
+	// If no seals to insert, return early
+	if len(seals) == 0 {
+		return nil
+	}
+
+	// Extract all seal numbers to check
+	var sealNumbers []string
+	for _, seal := range seals {
+		sealNumbers = append(sealNumbers, seal.SealNumber)
+	}
+
+	// Find existing seals
+	var existingSeals []model.Seal
+	if err := r.db.Where("seal_number IN ?", sealNumbers).Find(&existingSeals).Error; err != nil {
+		return err
+	}
+
+	// Create a map for faster lookup
+	existingSealMap := make(map[string]bool)
+	for _, seal := range existingSeals {
+		existingSealMap[seal.SealNumber] = true
+	}
+
+	// Filter out existing seals
+	var newSeals []model.Seal
+	for _, seal := range seals {
+		if !existingSealMap[seal.SealNumber] {
+			newSeals = append(newSeals, seal)
+		}
+	}
+
+	// If no new seals to insert, return success
+	if len(newSeals) == 0 {
+		return nil
+	}
+
+	// Insert only the new seals
+	return r.db.Create(&newSeals).Error
 }
 
 func (r *SealRepository) FindByNumber(sealNumber string) (*model.Seal, error) {
