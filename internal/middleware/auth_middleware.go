@@ -86,9 +86,22 @@ func TechnicianJWTMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		fmt.Println("🔍 [TechnicianJWTMiddleware] Checking Path:", c.Path())
 
-		if c.Path() == "/api/technician/register" || c.Path() == "/api/technician/login" {
-			fmt.Println("✅ [TechnicianJWTMiddleware] Skipping JWT check for:", c.Path())
-			return c.Next()
+		// ✅ เพิ่มเงื่อนไข Skip JWT ตรวจสอบให้ /api/technicians
+		skipPaths := []string{
+			"/api/technician/register",
+			"/api/technician/login",
+			"/api/technician/import",
+			"/api/technicians",     // ✅ เพิ่ม path นี้
+			"/api/technicians/",    // ✅ รองรับ /api/technicians/ (มี / ท้าย)
+			"/api/technician/list", // ✅ ถ้าคุณใช้ list สำหรับดึงช่างทั้งหมด
+		}
+
+		// ตรวจสอบว่าตรงกับ path ที่ต้องการ skip ไหม
+		for _, path := range skipPaths {
+			if c.Path() == path {
+				fmt.Println("✅ [TechnicianJWTMiddleware] Skipping JWT check for:", c.Path())
+				return c.Next()
+			}
 		}
 
 		fmt.Println("🔑 [TechnicianJWTMiddleware] Checking Authorization Header...")
@@ -101,20 +114,22 @@ func TechnicianJWTMiddleware() fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing token"})
 		}
 
-		// ✅ ตัด Bearer ที่ซ้ำกันออก
-		authHeader = strings.TrimSpace(authHeader) // ลบช่องว่างที่อาจมี
+		// ตัด Bearer ที่ซ้ำกันออก
+		authHeader = strings.TrimSpace(authHeader)
 		if strings.HasPrefix(authHeader, "Bearer Bearer ") {
 			authHeader = strings.TrimPrefix(authHeader, "Bearer ")
 		}
+
 		if !strings.HasPrefix(authHeader, "Bearer ") {
 			fmt.Println("🚨 [TechnicianJWTMiddleware] Invalid token format, missing 'Bearer ' prefix")
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token format"})
 		}
 
-		// ✅ เอา Token จริงๆ ออกมา
+		// เอา Token จริงๆ ออกมา
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		fmt.Println("🔑 [TechnicianJWTMiddleware] Cleaned Technician Token:", tokenString)
 
+		// ตรวจสอบ JWT
 		technicianSecretKey := []byte("your-technician-secret-key")
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return technicianSecretKey, nil
@@ -145,6 +160,7 @@ func TechnicianJWTMiddleware() fiber.Handler {
 		techID := uint(techIDFloat)
 		fmt.Println("✅ [TechnicianJWTMiddleware] Technician Verified, ID:", techID)
 
+		// ใส่ค่า tech_id กับ role ลงใน c.Locals
 		c.Locals("tech_id", techID)
 		c.Locals("role", role)
 

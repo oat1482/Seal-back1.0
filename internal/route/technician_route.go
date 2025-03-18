@@ -7,21 +7,22 @@ import (
 )
 
 func SetupTechnicianRoutes(router fiber.Router, techController *controller.TechnicianController) {
+	// 🔹 Group สำหรับ Technician (ใช้ /api/technician)
 	tech := router.Group("/api/technician")
 
-	// ✅ Register & Login **ไม่ต้องใช้ Token**
 	tech.Post("/register", techController.RegisterHandler)
 	tech.Post("/login", techController.LoginHandler)
 
-	// ✅ ใช้ Middleware เฉพาะเส้นทางที่ต้องใช้ Token
+	// 🔹 Routes ที่ต้องการ JWT Middleware
 	protectedTech := tech.Group("", middleware.TechnicianJWTMiddleware())
-
-	// ✅ ดึงซีลที่ถูก Assign ให้ช่าง
 	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)
-
-	// ✅ **เพิ่ม API ติดตั้ง Seal**
 	protectedTech.Put("/seals/install", techController.InstallSealHandler)
-
-	// ✅ **เพิ่ม API คืน Seal**
 	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler)
+	protectedTech.Put("/update/:id", techController.UpdateTechnicianHandler)
+
+	// ✅ Import Technicians (ไม่ต้องใช้ Token)
+	tech.Post("/import", techController.ImportTechniciansHandler)
+
+	// ✅ ดึงรายชื่อช่างทั้งหมด (เปิด Public)
+	tech.Get("/list", techController.GetAllTechniciansHandler)
 }

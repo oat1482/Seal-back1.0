@@ -137,3 +137,48 @@ func (s *TechnicianService) ReturnSeal(sealNumber string, techID uint, remarks s
 	}
 	return s.repo.CreateLog(&logEntry)
 }
+func (s *TechnicianService) UpdateTechnician(techID uint, data interface{}) error {
+	// 1) Find existing technician
+	existing, err := s.repo.FindByID(techID)
+	if err != nil {
+		return err // ถ้าไม่เจอจะได้ "ไม่พบช่างในระบบ"
+	}
+
+	// 2) Casting data เป็น struct
+	// (ถ้าใช้ struct แบบ fix ก็ cast ได้เลย)
+	d, ok := data.(struct {
+		FirstName   string
+		LastName    string
+		PhoneNumber string
+		CompanyName string
+		Department  string
+	})
+	if !ok {
+		return errors.New("invalid update data")
+	}
+
+	// 3) Update fields ที่ส่งมาว่าจะเปลี่ยน
+	if d.FirstName != "" {
+		existing.FirstName = d.FirstName
+	}
+	if d.LastName != "" {
+		existing.LastName = d.LastName
+	}
+	if d.PhoneNumber != "" {
+		existing.PhoneNumber = d.PhoneNumber
+	}
+	if d.CompanyName != "" {
+		existing.CompanyName = d.CompanyName
+	}
+	if d.Department != "" {
+		existing.Department = d.Department
+	}
+
+	existing.UpdatedAt = time.Now()
+
+	// 4) Save back to DB
+	return s.repo.UpdateTechnician(existing)
+}
+func (s *TechnicianService) GetAllTechnicians() ([]model.Technician, error) {
+	return s.repo.GetAllTechnicians()
+}

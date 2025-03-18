@@ -59,3 +59,20 @@ func (r *TechnicianRepository) UpdateSeal(seal *model.Seal) error {
 func (r *TechnicianRepository) CreateLog(log *model.Log) error {
 	return r.db.Create(log).Error
 }
+func (r *TechnicianRepository) UpdateTechnician(tech *model.Technician) error {
+	return r.db.Save(tech).Error
+}
+func (r *TechnicianRepository) FindByTechCode(code string) (*model.Technician, error) {
+	var tech model.Technician
+	if err := r.db.Where("technician_code = ?", code).First(&tech).Error; err != nil {
+		return nil, err
+	}
+	return &tech, nil
+}
+func (r *TechnicianRepository) GetAllTechnicians() ([]model.Technician, error) {
+	var technicians []model.Technician
+	if err := r.db.Find(&technicians).Error; err != nil {
+		return nil, err
+	}
+	return technicians, nil
+}

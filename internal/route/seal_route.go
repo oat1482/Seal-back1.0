@@ -17,7 +17,7 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 	// -- 2) POST /api/seals/generate : admin can generate multiple seals
 	seal.Post("/generate", middleware.JWTMiddleware(), sealController.GenerateSealsHandler)
 
-	// -- 3) PUT /api/seals/:seal_number/assign : assign a seal to a technician
+	// -- 3) PUT /api/seals/:seal_number/assign : assign a seal to a technician (by technician ID)
 	seal.Put("/:seal_number/assign", middleware.JWTMiddleware(), sealController.AssignSealToTechnicianHandler)
 
 	// -- 4) POST /api/seals/scan : scan a barcode
@@ -52,9 +52,10 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 
 	// -- 14) GET /api/seals/:seal_number : get a single seal by number (wildcard route - put last!)
 	seal.Get("/:seal_number", middleware.JWTMiddleware(), sealController.GetSealHandler)
+
+	// -- 15) POST /api/seals/check : check seals via JSON body
 	seal.Post("/check", sealController.CheckSealsHandler)
 
-	// -- Potential routes for technicians commented out:
-	// seal.Put("/:seal_number/install", middleware.TechnicianJWTMiddleware(), sealController.InstallSealHandler)
-	// seal.Put("/:seal_number/return", middleware.TechnicianJWTMiddleware(), sealController.ReturnSealHandler)
+	// -- 16) POST /api/seals/assign-by-techcode : assign seals by technician_code (ฟีเจอร์ใหม่)
+	seal.Post("/assign-by-techcode", middleware.JWTMiddleware(), sealController.AssignSealsByTechCodeHandler)
 }

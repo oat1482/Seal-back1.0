@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
-
 	"strings"
 
 	"github.com/Kev2406/PEA/internal/service"
@@ -21,12 +20,11 @@ func NewSealController(sealService *service.SealService) *SealController {
 	return &SealController{sealService: sealService}
 }
 
-// เราต้อง decode ค่าที่รับมาจาก URL ก่อนที่จะนำไปค้นหาในฐานข้อมูล เพราะตอนนี้ค่า status ที่ได้รับมานั้นถูก encode อยู่เป็น %E0%B8%9E... แทนที่จะเป็น "พร้อมใช้งาน" แบบปกติ
-
-// ลองแก้ไขฟังก์ชัน GetSealsByStatusHandler ให้ decode โดยใช้ url.QueryUnescape
-// ในไฟล์ seal_controller.go
+// -------------------------------------------------------------------
+// 1) GetSealsByStatusHandler
+// -------------------------------------------------------------------
 func (sc *SealController) GetSealsByStatusHandler(c *fiber.Ctx) error {
-	// ดึง status จาก URL params เช่น /api/seals/status/พร้อมใช้งาน
+	// /api/seals/status/:status เช่น /api/seals/status/พร้อมใช้งาน
 	rawStatus := c.Params("status")
 	status, err := url.QueryUnescape(rawStatus)
 	if err != nil {
@@ -44,12 +42,13 @@ func (sc *SealController) GetSealsByStatusHandler(c *fiber.Ctx) error {
 	return c.JSON(seals)
 }
 
+// -------------------------------------------------------------------
+// 2) GetSealByIDAndStatusHandler
+// -------------------------------------------------------------------
 func (sc *SealController) GetSealByIDAndStatusHandler(c *fiber.Ctx) error {
-	// ดึงค่า id และ status จาก Path Parameter
 	rawID := c.Params("id")
 	rawStatus := c.Params("status")
 
-	// Decode ค่า status เผื่อเป็น URL Encoded (เช่น %E0%B8%9E%E0%B8%A3%E0%B9%89...)
 	status, err := url.QueryUnescape(rawStatus)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -57,7 +56,6 @@ func (sc *SealController) GetSealByIDAndStatusHandler(c *fiber.Ctx) error {
 		})
 	}
 
-	// แปลง ID ให้เป็นตัวเลข ถ้าไม่ใช่ตัวเลขถือว่าไม่ถูกต้อง
 	sealID, err := strconv.Atoi(rawID)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -65,35 +63,28 @@ func (sc *SealController) GetSealByIDAndStatusHandler(c *fiber.Ctx) error {
 		})
 	}
 
-	// Log Debug
 	log.Println("🎬 กำลังดึงซีล ID:", sealID, " สถานะ:", status)
 
-	// ค้นหา Seal จาก ID และ Status ผ่าน Service
 	seal, err := sc.sealService.GetSealByIDAndStatus(uint(sealID), status)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
 	}
-
-	// ส่ง JSON กลับถ้าพบซีล
 	return c.JSON(seal)
 }
 
-// ------------------------- ฟีเจอร์ใหม่ ------------------------- //
-//
+// -------------------------------------------------------------------
+// 3) GenerateSealsMultipleBatchesHandler (เฉพาะ admin)
 // POST /api/seals/generate-batches
+// Body:
 //
-// โครงสร้าง JSON ที่คาดหวัง:
-// {
-//   "batches": [
-//     { "seal_number": "F2499", "count": 3 },
-//     { "seal_number": "PEA000002", "count": 2 }
-//   ]
-// }
+//	{
+//	  "batches": [
+//	    { "seal_number": "F2499", "count": 3 },
+//	    { "seal_number": "PEA000002", "count": 2 }
+//	  ]
+//	}
 //
-// เฉพาะ admin เท่านั้น
-//
-// -------------------------------------------------------------- //
-
+// -------------------------------------------------------------------
 func (sc *SealController) GenerateSealsMultipleBatchesHandler(c *fiber.Ctx) error {
 	userID, ok := c.Locals("user_id").(uint)
 	role, roleOk := c.Locals("role").(string)
@@ -103,7 +94,6 @@ func (sc *SealController) GenerateSealsMultipleBatchesHandler(c *fiber.Ctx) erro
 		})
 	}
 
-	// โครงสร้างสำหรับรับ request ที่มีหลาย batch
 	var request struct {
 		Batches []struct {
 			SealNumber string `json:"seal_number"`
@@ -117,17 +107,13 @@ func (sc *SealController) GenerateSealsMultipleBatchesHandler(c *fiber.Ctx) erro
 		})
 	}
 
-	// เช็คว่าใน batches ต้องมีอย่างน้อย 1 รายการ
 	if len(request.Batches) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "No batches provided",
 		})
 	}
 
-	// เตรียม slice สำหรับรวมผลลัพธ์ทั้งหมด
 	var allCreatedSeals []interface{}
-
-	// วนลูปในแต่ละ batch
 	for _, batch := range request.Batches {
 		if batch.SealNumber == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -140,26 +126,24 @@ func (sc *SealController) GenerateSealsMultipleBatchesHandler(c *fiber.Ctx) erro
 			})
 		}
 
-		// เรียก service เพื่อ generate & create seals
 		seals, err := sc.sealService.GenerateAndCreateSealsFromNumber(batch.SealNumber, batch.Count, userID)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": err.Error(),
-			})
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		}
-		// เก็บ seals ที่สร้างได้ในผลลัพธ์รวม
 		allCreatedSeals = append(allCreatedSeals, seals)
 	}
 
-	// ตอบกลับเป็น JSON รวมทั้งหมด
 	return c.JSON(fiber.Map{
 		"message": "All batches generated successfully",
-		"results": allCreatedSeals, // จะเป็น array ของ array seals (ถ้าอยากแบนให้อยู่ใน array เดียว อาจ loop รวมกันได้)
+		"results": allCreatedSeals,
 	})
 }
 
-// --------------- ส่วนฟังก์ชันเดิม ๆ ที่ไม่เปลี่ยน --------------- //
-
+// -------------------------------------------------------------------
+// 4) ScanSealHandler
+// POST /api/seals/scan
+// Body: { "seal_number": "F2499" }
+// -------------------------------------------------------------------
 func (sc *SealController) ScanSealHandler(c *fiber.Ctx) error {
 	var request struct {
 		SealNumber string `json:"seal_number"`
@@ -172,13 +156,16 @@ func (sc *SealController) ScanSealHandler(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
 	}
-
 	return c.JSON(fiber.Map{
 		"message": "Seal scanned successfully",
 		"seal":    seal,
 	})
 }
 
+// -------------------------------------------------------------------
+// 5) GetSealReportHandler
+// GET /api/seals/report
+// -------------------------------------------------------------------
 func (sc *SealController) GetSealReportHandler(c *fiber.Ctx) error {
 	report, err := sc.sealService.GetSealReport()
 	if err != nil {
@@ -187,6 +174,10 @@ func (sc *SealController) GetSealReportHandler(c *fiber.Ctx) error {
 	return c.JSON(report)
 }
 
+// -------------------------------------------------------------------
+// 6) GetSealHandler
+// GET /api/seals/:seal_number
+// -------------------------------------------------------------------
 func (sc *SealController) GetSealHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
 	seal, err := sc.sealService.GetSealByNumber(sealNumber)
@@ -196,50 +187,37 @@ func (sc *SealController) GetSealHandler(c *fiber.Ctx) error {
 	return c.JSON(seal)
 }
 
-// ------------------------------------------------------------------- //
-//  1. “จ่าย Seal” (IssueSealHandler) ยังเหมือนเดิม แค่ปรับข้อความ   //
-//
-// ------------------------------------------------------------------- //
+// -------------------------------------------------------------------
+// 7) IssueSealHandler (จ่าย Seal)
+// PUT /api/seals/:seal_number/issue?issued_to=?&employee_code=?&remark=?
+// -------------------------------------------------------------------
 func (sc *SealController) IssueSealHandler(c *fiber.Ctx) error {
-	sealNumber := c.Params("seal_number") // รับค่า seal_number จาก URL เช่น /api/seals/pea124/issue
+	sealNumber := c.Params("seal_number")
 
-	// ✅ ดึงค่าจาก Query Parameters (ถ้ามี)
-	issuedToParam := c.Query("issued_to", "3")        // ค่า default = 3
-	employeeCode := c.Query("employee_code", "12345") // ค่า default = 12345
+	issuedToParam := c.Query("issued_to", "3")
+	employeeCode := c.Query("employee_code", "12345")
 	remark := c.Query("remark", "จ่ายให้พนักงานตามคำสั่ง")
 
-	// ✅ แปลงค่า issuedToParam จาก string -> uint
 	issuedTo, err := strconv.ParseUint(issuedToParam, 10, 32)
 	if err != nil {
-		// หมอ: เพิ่มการตรวจสอบค่าที่ไม่ถูกต้องของ issued_to
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid issued_to parameter"})
 	}
 
-	// ✅ ดึงข้อมูลซีลจากฐานข้อมูล
 	seal, err := sc.sealService.GetSealByNumber(sealNumber)
 	if err != nil {
-		// หมอ: ป้องกันการเกิดปัญหากับฐานข้อมูล
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database query failed"})
 	}
 	if seal == nil {
-		// หมอ: ป้องกันการอัปเดตซีลที่ไม่มีอยู่จริง
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Seal not found"})
 	}
-
-	// ✅ ตรวจสอบสถานะของซีลก่อนดำเนินการจ่าย
 	if seal.Status != "พร้อมใช้งาน" {
-		// หมอ: ป้องกันการอัปเดตซีลที่ไม่สามารถจ่ายได้
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Seal is not available for issuing"})
 	}
 
-	// ✅ เรียกใช้งาน Service โดยไม่ต้องใช้ Request Body
-	err = sc.sealService.IssueSealWithDetails(sealNumber, uint(issuedTo), employeeCode, remark)
-	if err != nil {
-		// หมอ: จัดการข้อผิดพลาดที่เกิดขึ้นจาก Service Layer
+	if err := sc.sealService.IssueSealWithDetails(sealNumber, uint(issuedTo), employeeCode, remark); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// หมอ: ส่งข้อมูลการจ่ายซีลกลับไปให้ Frontend
 	return c.JSON(fiber.Map{
 		"message":       "จ่าย Seal เรียบร้อย",
 		"seal_number":   sealNumber,
@@ -249,10 +227,11 @@ func (sc *SealController) IssueSealHandler(c *fiber.Ctx) error {
 	})
 }
 
-// ------------------------------------------------------------------- //
-//  2. “ติดตั้ง (UseSeal)” + เพิ่ม Serial Number จาก Request Body     //
-//
-// ------------------------------------------------------------------- //
+// -------------------------------------------------------------------
+// 8) UseSealHandler (ติดตั้ง) + รับ Serial Number ใน Body
+// PUT /api/seals/:seal_number/use
+// Body: { "serial_number": "..." }
+// -------------------------------------------------------------------
 func (sc *SealController) UseSealHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
 	userID, ok := c.Locals("user_id").(uint)
@@ -261,28 +240,25 @@ func (sc *SealController) UseSealHandler(c *fiber.Ctx) error {
 	}
 
 	var request struct {
-		SerialNumber string `json:"serial_number,omitempty"` // ✅ รับ Serial Number
+		SerialNumber string `json:"serial_number,omitempty"`
 	}
-
 	if err := c.BodyParser(&request); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-
-	// ✅ ส่ง Serial Number ไปยัง Service
 	if err := sc.sealService.UseSealWithSerial(sealNumber, userID, request.SerialNumber); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(fiber.Map{
 		"message":       "ติดตั้ง Seal เรียบร้อย",
-		"serial_number": request.SerialNumber, // ✅ Return Serial Number ที่รับมา
+		"serial_number": request.SerialNumber,
 	})
 }
 
-// ------------------------------------------------------------------- //
-//  3. “ใช้งานแล้ว (ReturnSeal)” + เพิ่ม Remarks / หมายเหตุ           //
-//
-// ------------------------------------------------------------------- //
+// -------------------------------------------------------------------
+// 9) ReturnSealHandler (ใช้งานแล้ว) + Remarks
+// PUT /api/seals/:seal_number/return
+// Body: { "remarks": "..." }
+// -------------------------------------------------------------------
 func (sc *SealController) ReturnSealHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
 	userID, ok := c.Locals("user_id").(uint)
@@ -291,30 +267,25 @@ func (sc *SealController) ReturnSealHandler(c *fiber.Ctx) error {
 	}
 
 	var request struct {
-		Remarks string `json:"remarks,omitempty"` // ✅ รับ Remarks
+		Remarks string `json:"remarks,omitempty"`
 	}
-
 	if err := c.BodyParser(&request); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
-
-	// ✅ ส่ง Remarks ไปยัง Service
 	if err := sc.sealService.ReturnSealWithRemarks(sealNumber, userID, request.Remarks); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(fiber.Map{
 		"message": "บันทึกเป็น 'ใช้งานแล้ว' เรียบร้อย",
-		"remarks": request.Remarks, // ✅ Return Remarks ที่รับมา
+		"remarks": request.Remarks,
 	})
 }
 
-// ------------------------------------------------------------------- //
-//
-//	ส่วนการ Generate / Create Seal เดิม ๆ                             //
-//
-// ------------------------------------------------------------------- //
-
+// -------------------------------------------------------------------
+// 10) GenerateSealsHandler (admin)
+// POST /api/seals/generate
+// Body: { "seal_number":"F2499", "count":3 }
+// -------------------------------------------------------------------
 func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 	userID, ok := c.Locals("user_id").(uint)
 	role, roleOk := c.Locals("role").(string)
@@ -340,6 +311,10 @@ func (sc *SealController) GenerateSealsHandler(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Seals generated successfully", "seals": seals})
 }
 
+// -------------------------------------------------------------------
+// 11) CreateSealHandler (user?)
+// POST /api/seals/ (กรณีต้องการ Create Seal แบบเดียวกับ GenerateSeals)
+// -------------------------------------------------------------------
 func (sc *SealController) CreateSealHandler(c *fiber.Ctx) error {
 	userID, ok := c.Locals("user_id").(uint)
 	if !ok {
@@ -367,7 +342,9 @@ func (sc *SealController) CreateSealHandler(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Seals created successfully", "seals": seals})
 }
 
-// ส่วน incrementSealNumber เดิม
+// -------------------------------------------------------------------
+// ส่วน incrementSealNumber เดิม (ถ้าจะยังใช้ในบางที่)
+// -------------------------------------------------------------------
 func incrementSealNumber(current string) string {
 	if len(current) < 5 {
 		log.Println("❌ Error: Invalid seal number format")
@@ -393,27 +370,30 @@ func incrementSealNumber(current string) string {
 	return fmt.Sprintf("%s%0*d", prefix, len(numberPart), num)
 }
 
+// -------------------------------------------------------------------
+// 12) CheckSealExistsHandler
+// GET /api/seals/check/:seal_number
+// -------------------------------------------------------------------
 func (sc *SealController) CheckSealExistsHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
 	log.Println("🔍 Checking Seal:", sealNumber)
 
-	// สร้างเลขท้ายที่จะตรวจสอบ (ตามที่คุณต้องการ)
 	lastNumbers := []int{16, 17, 18}
-
-	// เรียก `CheckSealBeforeGenerate` โดยส่ง prefix และเลขท้าย
 	exists, err := sc.sealService.CheckSealBeforeGenerate(sealNumber[:len(sealNumber)-2], lastNumbers)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	if exists {
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"message": "Seal number already exists", "seal_number": sealNumber})
 	}
-
 	return c.JSON(fiber.Map{"message": "Seal number is available", "seal_number": sealNumber})
 }
 
-// ✅ ฟังก์ชันให้ช่างติดตั้ง Seal (เฉพาะที่ได้รับมอบหมาย)
+// -------------------------------------------------------------------
+// 13) InstallSealHandler (ช่างติดตั้ง Seal เฉพาะที่ assigned)
+// PUT /api/seals/:seal_number/install
+// Body: { "serial_number": "..." }
+// -------------------------------------------------------------------
 func (sc *SealController) InstallSealHandler(c *fiber.Ctx) error {
 	techID, ok := c.Locals("tech_id").(uint)
 	if !ok {
@@ -424,42 +404,46 @@ func (sc *SealController) InstallSealHandler(c *fiber.Ctx) error {
 	var req struct {
 		SerialNumber string `json:"serial_number,omitempty"`
 	}
-
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	err := sc.sealService.UseSealWithSerial(sealNumber, techID, req.SerialNumber)
-	if err != nil {
+	if err := sc.sealService.UseSealWithSerial(sealNumber, techID, req.SerialNumber); err != nil {
 		log.Println("❌ Install Seal Error:", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-
 	return c.JSON(fiber.Map{
 		"message":       "ติดตั้ง Seal เรียบร้อย",
 		"serial_number": req.SerialNumber,
 	})
 }
 
-// ✅ ฟังก์ชันให้ช่างดู Log การติดตั้ง Seal ที่เคยใช้งาน
+// -------------------------------------------------------------------
+// 14) GetSealLogsHandler (ดู Log ซีลจาก SealNumber)
+// GET /api/seals/:seal_number/logs
+// -------------------------------------------------------------------
 func (sc *SealController) GetSealLogsHandler(c *fiber.Ctx) error {
 	sealNumber := c.Params("seal_number")
-
 	logs, err := sc.sealService.GetSealLogs(sealNumber)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch logs"})
 	}
-
 	return c.JSON(logs)
 }
 
+// -------------------------------------------------------------------
+// 15) AssignSealToTechnicianHandler
+// PUT /api/seals/:seal_number/assign
+// Body: { "technician_id": 123, "remark": "..."}
+//
+// (Assign ซีลให้ Technician ID ตรง ๆ)
+// -------------------------------------------------------------------
 func (sc *SealController) AssignSealToTechnicianHandler(c *fiber.Ctx) error {
 	assignedBy, ok := c.Locals("user_id").(uint)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
-	// ✅ รับข้อมูลจาก Request Body
 	var request struct {
 		TechnicianID uint   `json:"technician_id"`
 		Remark       string `json:"remark"`
@@ -469,8 +453,6 @@ func (sc *SealController) AssignSealToTechnicianHandler(c *fiber.Ctx) error {
 	}
 
 	sealNumber := c.Params("seal_number")
-
-	// ✅ เรียกใช้ Service ให้ส่งค่าเป็น (sealNumber, techID, assignedBy, remark)
 	err := sc.sealService.AssignSealToTechnician(sealNumber, request.TechnicianID, assignedBy, request.Remark)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -482,11 +464,25 @@ func (sc *SealController) AssignSealToTechnicianHandler(c *fiber.Ctx) error {
 		"technician":  request.TechnicianID,
 	})
 }
+
+// -------------------------------------------------------------------
+// 16) IssueMultipleSealsHandler (เบิกหลายซีลทีเดียว จาก base number)
+// POST /api/seals/issue-multiple
+// Body:
+//
+//	{
+//	  "base_seal_number": "F11620000051015",
+//	  "last_numbers": [16, 17, 18],
+//	  "issued_to": 3,
+//	  "employee_code": "12345",
+//	  "remark": "จ่ายให้พนักงานตามคำสั่ง"
+//	}
+//
+// -------------------------------------------------------------------
 func (sc *SealController) IssueMultipleSealsHandler(c *fiber.Ctx) error {
-	// 1) Parse JSON input
 	var req struct {
-		BaseSealNumber string `json:"base_seal_number"` // e.g. "F11620000051015"
-		LastNumbers    []int  `json:"last_numbers"`     // e.g. [16, 17, 18]
+		BaseSealNumber string `json:"base_seal_number"`
+		LastNumbers    []int  `json:"last_numbers"`
 		IssuedTo       uint   `json:"issued_to"`
 		EmployeeCode   string `json:"employee_code"`
 		Remark         string `json:"remark"`
@@ -494,87 +490,96 @@ func (sc *SealController) IssueMultipleSealsHandler(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid JSON input"})
 	}
-
-	// Basic validation
 	if req.BaseSealNumber == "" || len(req.LastNumbers) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Must provide base_seal_number and last_numbers"})
 	}
 
-	// 2) (Optional) Extract prefix from base seal number
-	//    If your logic is always "remove last 2 digits," do:
-	//    prefix := req.BaseSealNumber[:len(req.BaseSealNumber)-2]
-	//    But if your suffix might be longer, use a regex approach:
 	re := regexp.MustCompile(`^([A-Za-z]*)(\d+)$`)
 	matches := re.FindStringSubmatch(req.BaseSealNumber)
 	if len(matches) != 3 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid seal format in base_seal_number"})
 	}
 	prefix := matches[1]
-	baseNumStr := matches[2] // e.g. "11620000051015" minus the leading letter(s)
+	baseNumStr := matches[2]
 
-	// 3) Call service method
 	issuedSeals, err := sc.sealService.IssueMultipleSeals(prefix, baseNumStr, req.LastNumbers, req.IssuedTo, req.EmployeeCode, req.Remark)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	// 4) Return success JSON
 	return c.JSON(fiber.Map{
 		"message": "Issued multiple seals successfully",
-		"seals":   issuedSeals, // The details of each seal you successfully issued
+		"seals":   issuedSeals,
 	})
 }
+
+// -------------------------------------------------------------------
+// 17) CheckMultipleSealsHandler (query param) / CheckSealsHandler (body)
+// -------------------------------------------------------------------
 func (sc *SealController) CheckMultipleSealsHandler(c *fiber.Ctx) error {
-	// 1) Read the query param "seal_numbers"
 	rawParam := c.Query("seal_numbers", "")
 	if rawParam == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "No seal_numbers provided",
-		})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No seal_numbers provided"})
 	}
-
-	// If you’re expecting a comma-separated string, do:
 	parts := strings.Split(rawParam, ",")
-	// Trim spaces
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
-
-	// 2) Pass to service
 	unavailable, err := sc.sealService.CheckMultipleSeals(parts)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	// 3) Return JSON with any missing/unavailable seals
 	return c.JSON(fiber.Map{"unavailable": unavailable})
 }
 
-// ✅ ตรวจสอบหลายซีล
 func (sc *SealController) CheckSealsHandler(c *fiber.Ctx) error {
 	var request struct {
 		SealNumbers []string `json:"seal_numbers"`
 	}
-
-	// 📌 อ่านค่าจาก Body
 	if err := c.BodyParser(&request); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request format"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request format"})
 	}
-
-	// 📌 ถ้าไม่มีซีลให้ตรวจสอบ
 	if len(request.SealNumbers) == 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "seal_numbers is required"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "seal_numbers is required"})
 	}
 
-	// ✅ ใช้ Service ตรวจสอบในฐานข้อมูล
 	foundSeals, missingSeals, err := sc.sealService.CheckSealAvailability(request.SealNumbers)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Database query failed"})
 	}
+	return c.JSON(fiber.Map{
+		"found":       foundSeals,
+		"unavailable": missingSeals,
+	})
+}
+
+// -------------------------------------------------------------------
+// 18) AssignSealsByTechCodeHandler
+// POST /api/seals/assign-by-techcode
+// Body: { "technician_code": "46735201FNRM-24", "seal_numbers": ["F1001","F1002"], "remark":"..." }
+// -------------------------------------------------------------------
+func (sc *SealController) AssignSealsByTechCodeHandler(c *fiber.Ctx) error {
+	var req struct {
+		TechnicianCode string   `json:"technician_code"`
+		SealNumbers    []string `json:"seal_numbers"`
+		Remark         string   `json:"remark,omitempty"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if req.TechnicianCode == "" || len(req.SealNumbers) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "technician_code and seal_numbers are required",
+		})
+	}
+
+	// เรียก SealService.AssignSealsByTechCode
+	if err := sc.sealService.AssignSealsByTechCode(req.TechnicianCode, req.SealNumbers, req.Remark); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	return c.JSON(fiber.Map{
-		"found":       foundSeals,   // ✅ ซีลที่เจอ
-		"unavailable": missingSeals, // ❌ ซีลที่ไม่มีในระบบ
+		"message":         "Assigned seals successfully",
+		"technician_code": req.TechnicianCode,
+		"seals_assigned":  req.SealNumbers,
 	})
-
 }

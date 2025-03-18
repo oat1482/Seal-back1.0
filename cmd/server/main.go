@@ -108,7 +108,16 @@ func main() {
 
 	// ✅ สร้าง Services
 	userService := service.NewUserService(userRepo)
-	sealService := service.NewSealService(sealRepo, transactionRepo, logRepo, config.DB)
+
+	// **แก้ตรงนี้**: ส่ง 5 ตัวแปรให้ NewSealService (repo, transactionRepo, logRepo, db, technicianRepo)
+	sealService := service.NewSealService(
+		sealRepo,
+		transactionRepo,
+		logRepo,
+		config.DB,
+		technicianRepo, // <--- เพิ่ม TechnicianRepo ตรงนี้
+	)
+
 	logService := service.NewLogService(logRepo)
 	technicianService := service.NewTechnicianService(technicianRepo)
 
@@ -121,14 +130,12 @@ func main() {
 	// -------------------------------
 	// 1) Public (No Token) Routes
 	// -------------------------------
-	// เช่น Technician Register/Login
 	publicGroup := app.Group("")
 	route.SetupTechnicianRoutes(publicGroup, technicianController)
 
 	// -------------------------------
 	// 2) Protected (Token) Routes
 	// -------------------------------
-	// กลุ่มนี้จะใช้ JWTMiddleware
 	secureGroup := app.Group("", middleware.JWTMiddleware())
 
 	// ✅ User Routes
@@ -149,7 +156,6 @@ func main() {
 	if port == "" {
 		port = "3000"
 	}
-
 	fmt.Printf("🚀 Server is running on http://localhost:%s\n", port)
 	log.Fatal(app.Listen("0.0.0.0:" + port))
 }
