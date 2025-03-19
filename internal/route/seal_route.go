@@ -58,4 +58,6 @@ func SetupSealRoutes(router fiber.Router, sealController *controller.SealControl
 
 	// -- 16) POST /api/seals/assign-by-techcode : assign seals by technician_code (ฟีเจอร์ใหม่)
 	seal.Post("/assign-by-techcode", middleware.JWTMiddleware(), sealController.AssignSealsByTechCodeHandler)
+	seal.Put("/:seal_number/cancel", middleware.JWTMiddleware(), sealController.CancelSealHandler)
+
 }

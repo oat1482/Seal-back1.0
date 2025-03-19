@@ -583,3 +583,19 @@ func (sc *SealController) AssignSealsByTechCodeHandler(c *fiber.Ctx) error {
 		"seals_assigned":  req.SealNumbers,
 	})
 }
+func (sc *SealController) CancelSealHandler(c *fiber.Ctx) error {
+	userID, ok := c.Locals("user_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+
+	sealNumber := c.Params("seal_number")
+	err := sc.sealService.CancelSeal(sealNumber, userID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": fmt.Sprintf("ซีล %s ถูกคืนสำเร็จ และกลับเป็นสถานะ 'พร้อมใช้งาน'", sealNumber),
+	})
+}

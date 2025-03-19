@@ -84,10 +84,14 @@ func (s *SealService) GetSealByNumber(sealNumber string) (*model.Seal, error) {
 }
 
 func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
-	existingSeal, _ := s.repo.FindByNumber(seal.SealNumber)
-	if existingSeal != nil {
-		return errors.New("มีซิลเบอร์นี้แล้ว")
+	exists, err := s.repo.CheckSealExists(seal.SealNumber)
+	if err != nil {
+		return err
 	}
+	if exists {
+		return errors.New("Security seal ซ้ำกรุณากรอกเลขใหม่ด้วยค่ะ")
+	}
+
 	now := time.Now()
 	seal.Status = "พร้อมใช้งาน"
 	seal.CreatedAt = now
@@ -99,7 +103,7 @@ func (s *SealService) CreateSeal(seal *model.Seal, userID uint) error {
 		}
 		logEntry := model.Log{
 			UserID: userID,
-			Action: fmt.Sprintf("สร้างซิล %s", seal.SealNumber),
+			Action: fmt.Sprintf("สร้างซีล %s", seal.SealNumber),
 		}
 		return s.logRepo.Create(&logEntry)
 	})
@@ -141,40 +145,45 @@ func (s *SealService) GenerateAndCreateSeals(count int, userID uint) ([]model.Se
 }
 
 func (s *SealService) GenerateAndCreateSealsFromNumber(startingSealNumber string, count int, userID uint) ([]model.Seal, error) {
-	if count == 1 {
-		existingSeal, _ := s.repo.FindByNumber(startingSealNumber)
-		if existingSeal != nil {
-			return []model.Seal{*existingSeal}, nil
-		}
-	}
 	sealNumbers, err := GenerateNextSealNumbers(startingSealNumber, count)
 	if err != nil {
 		return nil, err
 	}
+
 	now := time.Now()
-	seals := make([]model.Seal, count)
-	for i, sn := range sealNumbers {
-		seals[i] = model.Seal{
+	var newSeals []model.Seal
+
+	for _, sn := range sealNumbers {
+		exists, err := s.repo.CheckSealExists(sn)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, fmt.Errorf("Security seal ซ้ำกรุณากรอกเลขใหม่ด้วยค่ะ: %s", sn)
+		}
+
+		newSeals = append(newSeals, model.Seal{
 			SealNumber: sn,
 			Status:     "พร้อมใช้งาน",
 			CreatedAt:  now,
 			UpdatedAt:  now,
-		}
+		})
 	}
+
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := s.repo.CreateMultiple(seals); err != nil {
+		if err := s.repo.CreateMultiple(newSeals); err != nil {
 			return err
 		}
 		logEntry := model.Log{
 			UserID: userID,
-			Action: fmt.Sprintf("สร้างซิล %d อัน จากเลขเริ่ม %s", count, startingSealNumber),
+			Action: fmt.Sprintf("สร้างซีลใหม่ %d อัน จากเลขเริ่ม %s", count, startingSealNumber),
 		}
 		return s.logRepo.Create(&logEntry)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return seals, nil
+	return newSeals, nil
 }
 
 // -------------------------------------------------------------------
@@ -614,4 +623,34 @@ func (s *SealService) AssignSealsByTechCode(techCode string, sealNumbers []strin
 		}
 	}
 	return nil
+}
+func (s *SealService) CancelSeal(sealNumber string, userID uint) error {
+	seal, err := s.repo.FindByNumber(sealNumber)
+	if err != nil {
+		return errors.New("ไม่พบซิลในระบบ")
+	}
+
+	// เช็กว่าซีลสามารถคืนได้หรือไม่
+	if seal.Status == "ติดตั้งแล้ว" || seal.Status == "ใช้งานแล้ว" {
+		return errors.New("ซีลถูกใช้งานไปแล้ว ไม่สามารถคืนได้")
+	}
+
+	now := time.Now()
+	seal.Status = "พร้อมใช้งาน"
+	seal.IssuedBy = nil
+	seal.IssuedTo = nil
+	seal.IssuedAt = nil
+	seal.ReturnedBy = &userID
+	seal.ReturnedAt = &now
+
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := s.repo.Update(seal); err != nil {
+			return err
+		}
+		logEntry := model.Log{
+			UserID: userID,
+			Action: fmt.Sprintf("คืนซีล %s กลับเป็นสถานะ 'พร้อมใช้งาน'", sealNumber),
+		}
+		return s.logRepo.Create(&logEntry)
+	})
 }
