@@ -1,17 +1,17 @@
 package controller
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/service"
 	"github.com/gofiber/fiber/v2"
-	"strconv"
-	"strings"
 )
 
 func contains(str, substr string) bool {
 	return strings.Contains(strings.ToLower(str), strings.ToLower(substr))
-} // Helper Function
-//Since Go doesn’t have built-in case-insensitive substring search, create a helper function
+}
 
 type LogController struct {
 	logService *service.LogService
@@ -21,11 +21,6 @@ func NewLogController(logService *service.LogService) *LogController {
 	return &LogController{logService: logService}
 }
 
-//	logs categorized (e.g., "Created", "Issued", "Used", "Returned", etc.), you should modify the backend response to group logs by action type.
-//
-// ✅ Create a new log entry
-// 1. Modify GetAllLogsHandler in LogController
-// Update the function to categorize logs based on keywords in the action field
 func (lc *LogController) CreateLogHandler(c *fiber.Ctx) error {
 	var request struct {
 		UserID uint   `json:"user_id"`
@@ -62,7 +57,6 @@ func (lc *LogController) GetAllLogsHandler(c *fiber.Ctx) error {
 		})
 	}
 
-	// 🔹 Create categories
 	groupedLogs := map[string][]model.Log{
 		"created":  {},
 		"issued":   {},
@@ -71,7 +65,6 @@ func (lc *LogController) GetAllLogsHandler(c *fiber.Ctx) error {
 		"other":    {},
 	}
 
-	// 🔹 Categorize logs based on `action`
 	for _, log := range logs {
 		switch {
 		case contains(log.Action, "Created seal"):
@@ -87,7 +80,6 @@ func (lc *LogController) GetAllLogsHandler(c *fiber.Ctx) error {
 		}
 	}
 
-	// 🔹 Return categorized logs
 	return c.JSON(fiber.Map{
 		"success": true,
 		"logs":    groupedLogs,

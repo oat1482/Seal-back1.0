@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"fmt"
@@ -137,48 +138,71 @@ func (s *TechnicianService) ReturnSeal(sealNumber string, techID uint, remarks s
 	}
 	return s.repo.CreateLog(&logEntry)
 }
-func (s *TechnicianService) UpdateTechnician(techID uint, data interface{}) error {
-	// 1) Find existing technician
-	existing, err := s.repo.FindByID(techID)
+func (s *TechnicianService) UpdateTechnician(techID uint, req struct {
+	FirstName   string
+	LastName    string
+	PhoneNumber string
+	CompanyName string
+	Department  string
+}) error {
+	log.Println("🔍 [SERVICE] Checking if technician exists: ID =", techID)
+
+	tech, err := s.repo.FindByID(techID)
 	if err != nil {
-		return err // ถ้าไม่เจอจะได้ "ไม่พบช่างในระบบ"
+		log.Println("❌ [ERROR] Technician not found:", err)
+		return err
 	}
 
-	// 2) Casting data เป็น struct
-	// (ถ้าใช้ struct แบบ fix ก็ cast ได้เลย)
-	d, ok := data.(struct {
-		FirstName   string
-		LastName    string
-		PhoneNumber string
-		CompanyName string
-		Department  string
-	})
-	if !ok {
-		return errors.New("invalid update data")
+	log.Println("✅ [SERVICE] Found Technician:", tech)
+
+	// อัปเดตข้อมูลใหม่
+	tech.FirstName = req.FirstName
+	tech.LastName = req.LastName
+	tech.PhoneNumber = req.PhoneNumber
+	tech.CompanyName = req.CompanyName
+	tech.Department = req.Department
+
+	log.Println("🛠️ [SERVICE] Updating Technician:", tech)
+
+	err = s.repo.UpdateTechnician(tech)
+	if err != nil {
+		log.Println("❌ [ERROR] Database update failed:", err)
+		return err
 	}
 
-	// 3) Update fields ที่ส่งมาว่าจะเปลี่ยน
-	if d.FirstName != "" {
-		existing.FirstName = d.FirstName
-	}
-	if d.LastName != "" {
-		existing.LastName = d.LastName
-	}
-	if d.PhoneNumber != "" {
-		existing.PhoneNumber = d.PhoneNumber
-	}
-	if d.CompanyName != "" {
-		existing.CompanyName = d.CompanyName
-	}
-	if d.Department != "" {
-		existing.Department = d.Department
-	}
-
-	existing.UpdatedAt = time.Now()
-
-	// 4) Save back to DB
-	return s.repo.UpdateTechnician(existing)
+	log.Println("✅ [SERVICE] Technician update success!")
+	return nil
 }
+
 func (s *TechnicianService) GetAllTechnicians() ([]model.Technician, error) {
 	return s.repo.GetAllTechnicians()
+}
+
+// func (s *TechnicianService) UpdateTechnician(techID uint, req map[string]interface{}) error {
+//     technician, err := s.repo.FindByID(techID)
+//     if err != nil {
+//         return err
+//     }
+
+//     // อัปเดตข้อมูลที่ส่งเข้ามา
+//     if req["first_name"] != nil {
+//         technician.FirstName = req["first_name"].(string)
+//     }
+//     if req["last_name"] != nil {
+//         technician.LastName = req["last_name"].(string)
+//     }
+//     if req["phone_number"] != nil {
+//         technician.PhoneNumber = req["phone_number"].(string)
+//     }
+//     if req["company_name"] != nil {
+//         technician.CompanyName = req["company_name"].(string)
+//     }
+//     if req["department"] != nil {
+//         technician.Department = req["department"].(string)
+//     }
+
+//	    return s.repo.UpdateTechnician(technician)
+//	}
+func (s *TechnicianService) DeleteTechnician(techID uint) error {
+	return s.repo.DeleteTechnician(techID)
 }

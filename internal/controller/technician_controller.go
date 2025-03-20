@@ -164,33 +164,53 @@ func (tc *TechnicianController) ReturnSealHandler(c *fiber.Ctx) error {
 	})
 }
 func (tc *TechnicianController) UpdateTechnicianHandler(c *fiber.Ctx) error {
-	// รับ technician_id จาก URL param
-	techIDStr := c.Params("id") // เช่น /api/technician/update/:id
+	techIDStr := c.Params("id")
 	techID, err := strconv.Atoi(techIDStr)
 	if err != nil {
+		log.Println("❌ [ERROR] Invalid Technician ID:", techIDStr, "Error:", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid technician id"})
 	}
 
 	var req struct {
-		// อันไหนที่อนุญาตให้แก้
 		FirstName   string `json:"first_name"`
 		LastName    string `json:"last_name"`
 		PhoneNumber string `json:"phone_number"`
 		CompanyName string `json:"company_name"`
 		Department  string `json:"department"`
 	}
+
 	if err := c.BodyParser(&req); err != nil {
+		log.Println("❌ [ERROR] Invalid JSON body:", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
 	}
 
-	// ส่งไป Service
-	err = tc.technicianService.UpdateTechnician(uint(techID), req)
+	log.Println("🔍 [DEBUG] Technician Update Request:", req)
+
+	// Convert req to the expected format
+	techData := struct {
+		FirstName   string
+		LastName    string
+		PhoneNumber string
+		CompanyName string
+		Department  string
+	}{
+		FirstName:   req.FirstName,
+		LastName:    req.LastName,
+		PhoneNumber: req.PhoneNumber,
+		CompanyName: req.CompanyName,
+		Department:  req.Department,
+	}
+
+	err = tc.technicianService.UpdateTechnician(uint(techID), techData)
 	if err != nil {
+		log.Println("❌ [ERROR] Failed to update technician:", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	log.Println("✅ [SUCCESS] Technician updated successfully! ID:", techID)
 	return c.JSON(fiber.Map{"message": "Technician updated successfully"})
 }
+
 func (tc *TechnicianController) ImportTechniciansHandler(c *fiber.Ctx) error {
 	var techList []model.Technician
 	if err := c.BodyParser(&techList); err != nil {
@@ -217,4 +237,46 @@ func (tc *TechnicianController) GetAllTechniciansHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch technicians"})
 	}
 	return c.JSON(technicians)
+}
+
+// This is the updated version with better field handling
+// func (tc *TechnicianController) UpdateTechnicianV2Handler(c *fiber.Ctx) error {
+// 	// รับ technician_id จาก URL param
+// 	techIDStr := c.Params("id")
+// 	techID, err := strconv.Atoi(techIDStr)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid technician ID"})
+// 	}
+
+// 	var req struct {
+// 		FirstName   string `json:"first_name,omitempty"`
+// 		LastName    string `json:"last_name,omitempty"`
+// 		PhoneNumber string `json:"phone_number,omitempty"`
+// 		CompanyName string `json:"company_name,omitempty"`
+// 		Department  string `json:"department,omitempty"`
+// 	}
+// 	if err := c.BodyParser(&req); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+// 	}
+
+// 	err = tc.technicianService.UpdateTechnician(uint(techID), req)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+// 	}
+
+//		return c.JSON(fiber.Map{"message": "Technician updated successfully"})
+//	}
+func (tc *TechnicianController) DeleteTechnicianHandler(c *fiber.Ctx) error {
+	techIDStr := c.Params("id")
+	techID, err := strconv.Atoi(techIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid technician ID"})
+	}
+
+	err = tc.technicianService.DeleteTechnician(uint(techID))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"message": "Technician deleted successfully"})
 }

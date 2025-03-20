@@ -49,32 +49,31 @@ func generateToken(user *model.User, wg *sync.WaitGroup, tokenChan chan<- string
 }
 
 func main() {
-	// แสดง Log ไฟล์/บรรทัดด้วย
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	if err := godotenv.Load(); err != nil {
-		log.Println("⚠️ Warning: No .env file found. Using system environment variables.")
+		log.Println("Warning: No .env file found. Using system environment variables.")
 	}
-
-	// ✅ Init DB
 	config.InitDB()
 
-	// ✅ Database Migrations
 	log.Println("🔧 Running database migrations...")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := migration.CreateStoreTable(config.DB); err != nil {
-			log.Fatalf("❌ Migration failed: %v", err)
+			log.Println("Migration failed:", err)
 		}
+
 		log.Println("✅ Migrations completed!")
 	}()
 
-	// ✅ สร้าง Fiber App
 	app := fiber.New()
 
-	// ✅ ตั้งค่า CORS
+	app.Get("/api/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "ok", "time": time.Now()})
+	})
+
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     "http://192.168.2.19:5173, https://192.168.2.19:5173",
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
@@ -84,7 +83,6 @@ func main() {
 		MaxAge:           12 * 3600,
 	}))
 
-	// ✅ Handle Preflight OPTIONS Request
 	app.Options("*", func(c *fiber.Ctx) error {
 		if c.Get("Origin") != "" {
 			c.Set("Access-Control-Allow-Origin", c.Get("Origin"))
@@ -95,67 +93,53 @@ func main() {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	// 🔴 ไม่ใช้ app.Use(middleware.JWTMiddleware()) แบบ Global
-	// log.Println("🔍 Setting up Middleware...")
-	// app.Use(middleware.JWTMiddleware()) // ลบออก
-
-	// ✅ สร้าง Repositories
 	userRepo := repository.NewUserRepository(config.DB)
 	sealRepo := repository.NewSealRepository(config.DB)
 	transactionRepo := repository.NewTransactionRepository(config.DB)
 	logRepo := repository.NewLogRepository(config.DB)
 	technicianRepo := repository.NewTechnicianRepository(config.DB)
 
-	// ✅ สร้าง Services
 	userService := service.NewUserService(userRepo)
 
-	// **แก้ตรงนี้**: ส่ง 5 ตัวแปรให้ NewSealService (repo, transactionRepo, logRepo, db, technicianRepo)
 	sealService := service.NewSealService(
 		sealRepo,
 		transactionRepo,
 		logRepo,
 		config.DB,
-		technicianRepo, // <--- เพิ่ม TechnicianRepo ตรงนี้
+		technicianRepo,
 	)
 
 	logService := service.NewLogService(logRepo)
 	technicianService := service.NewTechnicianService(technicianRepo)
 
-	// ✅ สร้าง Controllers
 	technicianController := controller.NewTechnicianController(technicianService, sealService)
 	userController := controller.NewUserController(userService)
 	sealController := controller.NewSealController(sealService)
 	logController := controller.NewLogController(logService)
 
-	// -------------------------------
-	// 1) Public (No Token) Routes
-	// -------------------------------
 	publicGroup := app.Group("")
 	route.SetupTechnicianRoutes(publicGroup, technicianController)
 
-	// -------------------------------
-	// 2) Protected (Token) Routes
-	// -------------------------------
 	secureGroup := app.Group("", middleware.JWTMiddleware())
 
-	// ✅ User Routes
 	route.SetupUserRoutes(secureGroup, userController)
 
-	// ✅ Seal Routes
 	route.SetupSealRoutes(secureGroup, sealController)
 
-	// ✅ Admin Logs
 	secureGroup.Use("/logs", middleware.AdminOnlyMiddleware)
 	route.SetupLogRoutes(secureGroup, logController)
 
-	// ✅ รอ Migrations เสร็จ
 	wg.Wait()
 
-	// ✅ กำหนด Port
+	// log.Fatal(app.ListenTLS(":443", "cert.pem", "key.pem"))
+
+	// หรือ ใช้ HTTP ธรรมดา (ถ้ามี Reverse Proxy หรือใช้ Local)
+	// log.Fatal(app.Listen(":80"))
+	// กำหนด Port
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
-	fmt.Printf("🚀 Server is running on http://localhost:%s\n", port)
+	fmt.Printf("Server is running on http://localhost:%s\n", port)
 	log.Fatal(app.Listen("0.0.0.0:" + port))
 }

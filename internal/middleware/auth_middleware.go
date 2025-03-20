@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"log"
+	"regexp"
 	"strings"
 
 	"fmt"
@@ -86,17 +87,21 @@ func TechnicianJWTMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		fmt.Println("🔍 [TechnicianJWTMiddleware] Checking Path:", c.Path())
 
-		// ✅ เพิ่มเงื่อนไข Skip JWT ตรวจสอบให้ /api/technicians
+		// ✅ เพิ่ม Path ที่ต้องการ Skip JWT ตรวจสอบ
 		skipPaths := []string{
 			"/api/technician/register",
 			"/api/technician/login",
 			"/api/technician/import",
-			"/api/technicians",     // ✅ เพิ่ม path นี้
-			"/api/technicians/",    // ✅ รองรับ /api/technicians/ (มี / ท้าย)
-			"/api/technician/list", // ✅ ถ้าคุณใช้ list สำหรับดึงช่างทั้งหมด
+			"/api/technician/list",
 		}
 
-		// ตรวจสอบว่าตรงกับ path ที่ต้องการ skip ไหม
+		// ✅ ใช้ Regular Expression เพื่อตรวจสอบ /api/technician/update/:id และ /api/technician/delete/:id
+		regexPatterns := []string{
+			`^/api/technician/update/\d+$`, // รองรับ /api/technician/update/9
+			`^/api/technician/delete/\d+$`, // รองรับ /api/technician/delete/9
+		}
+
+		// ✅ ตรวจสอบ Skip Path แบบปกติ
 		for _, path := range skipPaths {
 			if c.Path() == path {
 				fmt.Println("✅ [TechnicianJWTMiddleware] Skipping JWT check for:", c.Path())
@@ -104,63 +109,49 @@ func TechnicianJWTMiddleware() fiber.Handler {
 			}
 		}
 
-		fmt.Println("🔑 [TechnicianJWTMiddleware] Checking Authorization Header...")
+		// ✅ ตรวจสอบ Path ด้วย Regular Expression
+		for _, pattern := range regexPatterns {
+			match, _ := regexp.MatchString(pattern, c.Path())
+			if match {
+				fmt.Println("✅ [TechnicianJWTMiddleware] Skipping JWT check for:", c.Path())
+				return c.Next()
+			}
+		}
 
+		// 🔑 ตรวจสอบ Authorization Header
 		authHeader := c.Get("Authorization")
-		fmt.Println("🔎 [TechnicianJWTMiddleware] Raw Authorization Header:", authHeader)
-
 		if authHeader == "" {
-			fmt.Println("🚨 [TechnicianJWTMiddleware] Missing Authorization header for path:", c.Path())
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing token"})
-		}
-
-		// ตัด Bearer ที่ซ้ำกันออก
-		authHeader = strings.TrimSpace(authHeader)
-		if strings.HasPrefix(authHeader, "Bearer Bearer ") {
-			authHeader = strings.TrimPrefix(authHeader, "Bearer ")
-		}
-
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			fmt.Println("🚨 [TechnicianJWTMiddleware] Invalid token format, missing 'Bearer ' prefix")
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token format"})
 		}
 
 		// เอา Token จริงๆ ออกมา
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		fmt.Println("🔑 [TechnicianJWTMiddleware] Cleaned Technician Token:", tokenString)
-
-		// ตรวจสอบ JWT
 		technicianSecretKey := []byte("your-technician-secret-key")
+
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return technicianSecretKey, nil
 		})
 		if err != nil || !token.Valid {
-			fmt.Println("❌ [TechnicianJWTMiddleware] Invalid Technician Token:", err)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token"})
 		}
 
+		// ✅ ตรวจสอบ Claims
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			fmt.Println("❌ [TechnicianJWTMiddleware] Invalid Technician Token Claims")
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token claims"})
 		}
 
 		role, _ := claims["role"].(string)
 		if role != "technician" {
-			fmt.Println("🚫 [TechnicianJWTMiddleware] Access denied: not a technician")
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Access denied: not technician"})
 		}
 
 		techIDFloat, ok := claims["tech_id"].(float64)
 		if !ok {
-			fmt.Println("🚫 [TechnicianJWTMiddleware] Missing tech_id in token")
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid token: missing tech_id"})
 		}
 
 		techID := uint(techIDFloat)
-		fmt.Println("✅ [TechnicianJWTMiddleware] Technician Verified, ID:", techID)
-
-		// ใส่ค่า tech_id กับ role ลงใน c.Locals
 		c.Locals("tech_id", techID)
 		c.Locals("role", role)
 

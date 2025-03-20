@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"log"
 
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"gorm.io/gorm"
@@ -60,8 +61,17 @@ func (r *TechnicianRepository) CreateLog(log *model.Log) error {
 	return r.db.Create(log).Error
 }
 func (r *TechnicianRepository) UpdateTechnician(tech *model.Technician) error {
-	return r.db.Save(tech).Error
+	log.Println("🔍 [REPO] Updating Technician ID:", tech.ID)
+
+	if err := r.db.Save(tech).Error; err != nil {
+		log.Println("❌ [ERROR] Failed to update Technician in DB:", err)
+		return err
+	}
+
+	log.Println("✅ [REPO] Technician updated in DB successfully!")
+	return nil
 }
+
 func (r *TechnicianRepository) FindByTechCode(code string) (*model.Technician, error) {
 	var tech model.Technician
 	if err := r.db.Where("technician_code = ?", code).First(&tech).Error; err != nil {
@@ -75,4 +85,7 @@ func (r *TechnicianRepository) GetAllTechnicians() ([]model.Technician, error) {
 		return nil, err
 	}
 	return technicians, nil
+}
+func (r *TechnicianRepository) DeleteTechnician(techID uint) error {
+	return r.db.Where("id = ?", techID).Delete(&model.Technician{}).Error
 }

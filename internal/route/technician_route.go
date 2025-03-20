@@ -10,19 +10,25 @@ func SetupTechnicianRoutes(router fiber.Router, techController *controller.Techn
 	// 🔹 Group สำหรับ Technician (ใช้ /api/technician)
 	tech := router.Group("/api/technician")
 
-	tech.Post("/register", techController.RegisterHandler)
-	tech.Post("/login", techController.LoginHandler)
+	// ✅ Public Routes (ไม่ต้องใช้ JWT)
+	tech.Post("/register", techController.RegisterHandler)        // สมัครช่างใหม่
+	tech.Post("/login", techController.LoginHandler)              // ล็อกอิน
+	tech.Post("/import", techController.ImportTechniciansHandler) // Import รายชื่อช่าง
+	tech.Get("/list", techController.GetAllTechniciansHandler)    // ดูรายชื่อช่างทั้งหมด
 
-	// 🔹 Routes ที่ต้องการ JWT Middleware
+	tech.Put("/update/:id", techController.UpdateTechnicianHandler)    // อัปเดตข้อมูลช่าง
+	tech.Delete("/delete/:id", techController.DeleteTechnicianHandler) // ลบข้อมูลช่าง
+
+	// 🔹 Protected Routes (ต้องใช้ JWT)
 	protectedTech := tech.Group("", middleware.TechnicianJWTMiddleware())
-	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)
-	protectedTech.Put("/seals/install", techController.InstallSealHandler)
-	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler)
-	protectedTech.Put("/update/:id", techController.UpdateTechnicianHandler)
 
-	// ✅ Import Technicians (ไม่ต้องใช้ Token)
-	tech.Post("/import", techController.ImportTechniciansHandler)
+	// ✅ Routes ที่เกี่ยวกับการจัดการช่าง
+	//protectedTech.Put("/update/:id", techController.UpdateTechnicianHandler)    // อัปเดตข้อมูลช่าง
+	//protectedTech.Delete("/delete/:id", techController.DeleteTechnicianHandler) // ลบข้อมูลช่าง
 
-	// ✅ ดึงรายชื่อช่างทั้งหมด (เปิด Public)
-	tech.Get("/list", techController.GetAllTechniciansHandler)
+	// ✅ Routes ที่เกี่ยวกับ Seal (เฉพาะช่างที่มีสิทธิ์)
+	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)               // ดูซีลที่ได้รับมอบหมาย
+	protectedTech.Put("/seals/install", techController.InstallSealHandler)            // ติดตั้งซีล
+	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler) // คืนซีล
+
 }
