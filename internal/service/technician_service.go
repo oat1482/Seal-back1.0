@@ -9,6 +9,9 @@ import (
 
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/domain/repository"
+
+	//"github.com/Kev2406/PEA/internal/uploads"
+
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -22,9 +25,7 @@ type TechnicianService struct {
 
 // NewTechnicianService สร้าง instance ของ TechnicianService
 func NewTechnicianService(repo *repository.TechnicianRepository) *TechnicianService {
-	return &TechnicianService{
-		repo: repo,
-	}
+	return &TechnicianService{repo: repo}
 }
 
 // Register สำหรับลงทะเบียนช่างใหม่
@@ -68,34 +69,36 @@ func (s *TechnicianService) Login(username, password string) (string, error) {
 	return signedToken, nil
 }
 func (s *TechnicianService) InstallSeal(sealNumber string, techID uint, serialNumber string) error {
-	// ✅ ค้นหาซิลจากฐานข้อมูล
+	log.Printf("🔧 [InstallSeal] sealNumber=%s, techID=%d\n", sealNumber, techID)
+
+	// 🔎 **1) ตรวจสอบว่าซีลมีอยู่ในระบบ**
 	seal, err := s.repo.FindSealByNumber(sealNumber)
 	if err != nil {
 		return errors.New("ไม่พบซีลในระบบ")
 	}
 
-	// ✅ ตรวจสอบว่าซิลถูกมอบหมายให้ช่างคนนี้หรือไม่
+	// 🔍 **2) ตรวจสอบว่าซีลถูก assign ให้ technician คนนี้**
 	if seal.AssignedToTechnician == nil || *seal.AssignedToTechnician != techID {
 		return errors.New("คุณไม่มีสิทธิ์ติดตั้งซีลนี้")
 	}
 
-	// ✅ ตรวจสอบว่าสถานะของซีลเป็น "จ่าย" เท่านั้น
+	// 🚦 **3) ตรวจสอบว่าสถานะของซีลเป็น 'จ่าย'**
 	if seal.Status != "จ่าย" {
-		return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
+		return errors.New("ซีลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
 	}
 
+	// 🛠 **4) อัปเดตสถานะเป็น 'ติดตั้งแล้ว'**
 	now := time.Now()
 	seal.Status = "ติดตั้งแล้ว"
 	seal.UsedBy = &techID
 	seal.UsedAt = &now
-	seal.InstalledSerial = serialNumber // ✅ บันทึก Serial Number
+	seal.InstalledSerial = serialNumber
 
-	// ✅ บันทึกข้อมูลลงฐานข้อมูล
 	if err := s.repo.UpdateSeal(seal); err != nil {
 		return err
 	}
 
-	// ✅ บันทึก Log
+	// 📝 **5) บันทึก Log ว่ามีการติดตั้ง**
 	logEntry := model.Log{
 		UserID: techID,
 		Action: fmt.Sprintf("ติดตั้งซีล %s (Serial: %s)", sealNumber, serialNumber),
@@ -205,4 +208,29 @@ func (s *TechnicianService) GetAllTechnicians() ([]model.Technician, error) {
 //	}
 func (s *TechnicianService) DeleteTechnician(techID uint) error {
 	return s.repo.DeleteTechnician(techID)
+}
+
+// ✅ **อัปโหลดรูปภาพหลังจากติดตั้งซีล**
+func (s *TechnicianService) UploadSealImages(sealNumber string, techID uint, image1, image2 string) error {
+	seal, err := s.repo.FindSealByNumber(sealNumber)
+	if err != nil {
+		return errors.New("ไม่พบซีลในระบบ")
+	}
+
+	if seal.Status != "ติดตั้งแล้ว" {
+		return errors.New("ซีลต้องอยู่ในสถานะ 'ติดตั้งแล้ว' เท่านั้นจึงจะอัปโหลดรูปได้")
+	}
+
+	if seal.UsedBy == nil || *seal.UsedBy != techID {
+		return errors.New("คุณไม่มีสิทธิ์อัปโหลดรูปซีลนี้")
+	}
+
+	if image1 != "" {
+		seal.Image1 = image1
+	}
+	if image2 != "" {
+		seal.Image2 = image2
+	}
+
+	return s.repo.UpdateSeal(seal)
 }

@@ -70,6 +70,9 @@ func main() {
 
 	app := fiber.New()
 
+	// ✅ ให้ Fiber เสิร์ฟไฟล์ที่อัปโหลด
+	app.Static("/uploads", "./internal/uploads") // <--- ตรงนี้ถูกต้องแล้วครับ!
+
 	app.Get("/api/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok", "time": time.Now()})
 	})

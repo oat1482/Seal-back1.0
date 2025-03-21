@@ -1,64 +1,54 @@
 package uploads
 
 import (
-	"errors"
 	"fmt"
-	"io"
+	"log"
 	"mime/multipart"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"github.com/google/uuid"
+	"time"
 )
 
-// ✅ เพิ่มตัวแปร AllowedExtensions เพื่อกำหนดประเภทไฟล์ที่อนุญาต
-var AllowedExtensions = map[string]bool{
-	".jpg":  true,
-	".jpeg": true,
-	".png":  true,
+func SaveImage(file *multipart.FileHeader) (string, error) {
+	uploadDir := "./internal/uploads"
+	err := os.MkdirAll(uploadDir, os.ModePerm)
+	if err != nil {
+		log.Println("❌ [ERROR] Failed to create upload directory:", err)
+		return "", err
+	}
+
+	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), filepath.Base(file.Filename))
+	savePath := filepath.Join(uploadDir, filename)
+
+	log.Println("📂 [DEBUG] Saving file to:", savePath)
+
+	if err := saveFile(file, savePath); err != nil {
+		log.Println("❌ [ERROR] Failed to save file:", err)
+		return "", err
+	}
+
+	log.Println("✅ [SUCCESS] Image saved:", savePath)
+	return "/uploads/" + filename, nil // 👈 path ที่ client ใช้ดูได้
 }
 
-// SaveImage บันทึกไฟล์รูปภาพและคืนค่าลิงก์ไฟล์
-func SaveImage(file *multipart.FileHeader) (string, error) {
-	savePath := "internal/uploads/"
-
-	// สร้างโฟลเดอร์ถ้ายังไม่มี
-	if _, err := os.Stat(savePath); os.IsNotExist(err) {
-		if err := os.MkdirAll(savePath, os.ModePerm); err != nil {
-			return "", fmt.Errorf("ไม่สามารถสร้างโฟลเดอร์อัปโหลด: %v", err)
-		}
-	}
-
-	// ✅ ตรวจสอบประเภทไฟล์ (ไฟล์ที่ไม่อยู่ใน AllowedExtensions จะถูกปฏิเสธ)
-	extension := strings.ToLower(filepath.Ext(file.Filename))
-	if !AllowedExtensions[extension] {
-		return "", errors.New("ประเภทไฟล์ไม่รองรับ (อนุญาตเฉพาะ .jpg, .jpeg, .png)")
-	}
-
-	// ใช้ UUID ตั้งชื่อไฟล์
-	filename := fmt.Sprintf("%s%s", uuid.New().String(), extension)
-	filePath := filepath.Join(savePath, filename)
-
-	// เปิดไฟล์ที่อัปโหลดมา
+func saveFile(file *multipart.FileHeader, path string) error {
 	src, err := file.Open()
 	if err != nil {
-		return "", fmt.Errorf("ไม่สามารถเปิดไฟล์: %v", err)
+		log.Println("❌ [ERROR] Cannot open file:", err)
+		return err
 	}
 	defer src.Close()
 
-	// สร้างไฟล์ปลายทางเพื่อบันทึกข้อมูล
-	dst, err := os.Create(filePath)
+	dst, err := os.Create(path)
 	if err != nil {
-		return "", fmt.Errorf("ไม่สามารถสร้างไฟล์: %v", err)
+		log.Println("❌ [ERROR] Cannot create destination file:", err)
+		return err
 	}
 	defer dst.Close()
 
-	// คัดลอกข้อมูลจากไฟล์ที่อัปโหลดไปยังไฟล์ปลายทาง
-	if _, err := io.Copy(dst, src); err != nil {
-		return "", fmt.Errorf("บันทึกไฟล์ล้มเหลว: %v", err)
+	_, err = dst.ReadFrom(src)
+	if err != nil {
+		log.Println("❌ [ERROR] Failed to copy file data:", err)
 	}
-
-	// คืนค่าลิงก์ของไฟล์
-	return "/uploads/" + filename, nil
+	return err
 }

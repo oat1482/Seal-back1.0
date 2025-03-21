@@ -22,13 +22,11 @@ func SetupTechnicianRoutes(router fiber.Router, techController *controller.Techn
 	// 🔹 Protected Routes (ต้องใช้ JWT)
 	protectedTech := tech.Group("", middleware.TechnicianJWTMiddleware())
 
-	// ✅ Routes ที่เกี่ยวกับการจัดการช่าง
-	//protectedTech.Put("/update/:id", techController.UpdateTechnicianHandler)    // อัปเดตข้อมูลช่าง
-	//protectedTech.Delete("/delete/:id", techController.DeleteTechnicianHandler) // ลบข้อมูลช่าง
-
 	// ✅ Routes ที่เกี่ยวกับ Seal (เฉพาะช่างที่มีสิทธิ์)
 	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)               // ดูซีลที่ได้รับมอบหมาย
-	protectedTech.Put("/seals/install", techController.InstallSealHandler)            // ติดตั้งซีล
+	protectedTech.Post("/seals/install", techController.InstallSealHandler)           // 🔥 เปลี่ยนเป็น POST รองรับการอัปโหลด
 	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler) // คืนซีล
 
+	// ✅ **เพิ่ม API สำหรับอัปโหลดรูปซีล (แยกจาก Install)**
+	protectedTech.Post("/seals/upload-images", techController.UploadSealImagesHandler) // อัปโหลดรูปสำหรับซีลที่ติดตั้งแล้ว
 }

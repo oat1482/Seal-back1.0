@@ -42,12 +42,22 @@ func (r *TechnicianRepository) FindByID(techID uint) (*model.Technician, error) 
 }
 func (r *TechnicianRepository) FindSealByNumber(sealNumber string) (*model.Seal, error) {
 	var seal model.Seal
-	if err := r.db.Where("seal_number = ?", sealNumber).First(&seal).Error; err != nil {
+
+	log.Println("🔍 [DEBUG] Searching for Seal:", sealNumber) // Debug log ก่อน Query
+
+	err := r.db.Where("seal_number = ?", sealNumber).First(&seal).Error
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Println("❌ [ERROR] Seal not found:", sealNumber) // Log กรณีไม่พบ
 			return nil, errors.New("ไม่พบซีลในระบบ")
 		}
+		log.Println("❌ [ERROR] Database error:", err) // Log ถ้าเกิด DB error อื่นๆ
 		return nil, err
 	}
+
+	// ✅ Debug Log ถ้าหาเจอซีล
+	log.Println("✅ [DEBUG] Found Seal:", seal.SealNumber, "Status:", seal.Status, "UsedBy:", seal.UsedBy)
+
 	return &seal, nil
 }
 

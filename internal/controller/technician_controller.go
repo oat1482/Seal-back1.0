@@ -8,6 +8,8 @@ import (
 
 	"github.com/Kev2406/PEA/internal/domain/model"
 	"github.com/Kev2406/PEA/internal/service"
+	"github.com/Kev2406/PEA/internal/uploads"
+
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -105,34 +107,30 @@ func (tc *TechnicianController) GetAssignedSealsHandler(c *fiber.Ctx) error {
 	return c.JSON(seals)
 }
 
-// ✅ Technician ติดตั้งซีล (เฉพาะที่ได้รับมอบหมาย)
 func (tc *TechnicianController) InstallSealHandler(c *fiber.Ctx) error {
 	techID, ok := c.Locals("tech_id").(uint)
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
-	var req struct {
-		SealNumber   string `json:"seal_number"`
-		SerialNumber string `json:"serial_number,omitempty"`
+	sealNumber := c.FormValue("seal_number")
+	serialNumber := c.FormValue("serial_number")
+
+	log.Println("🔍 [DEBUG] InstallSealHandler: seal_number =", sealNumber, ", serial_number =", serialNumber)
+
+	if sealNumber == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Seal number is required"})
 	}
 
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	log.Println("🔧 Install Seal Request:", req.SealNumber, "by Technician ID:", techID)
-
-	err := tc.technicianService.InstallSeal(req.SealNumber, techID, req.SerialNumber)
+	err := tc.technicianService.InstallSeal(sealNumber, techID, serialNumber)
 	if err != nil {
-		log.Println("❌ Install Seal Error:", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
-		"message":       "ติดตั้ง Seal เรียบร้อย",
-		"seal_number":   req.SealNumber,
-		"serial_number": req.SerialNumber,
+		"message":       "ติดตั้งซีลสำเร็จ กรุณาอัปโหลดรูปภาพ",
+		"seal_number":   sealNumber,
+		"serial_number": serialNumber,
 	})
 }
 
@@ -239,33 +237,6 @@ func (tc *TechnicianController) GetAllTechniciansHandler(c *fiber.Ctx) error {
 	return c.JSON(technicians)
 }
 
-// This is the updated version with better field handling
-// func (tc *TechnicianController) UpdateTechnicianV2Handler(c *fiber.Ctx) error {
-// 	// รับ technician_id จาก URL param
-// 	techIDStr := c.Params("id")
-// 	techID, err := strconv.Atoi(techIDStr)
-// 	if err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid technician ID"})
-// 	}
-
-// 	var req struct {
-// 		FirstName   string `json:"first_name,omitempty"`
-// 		LastName    string `json:"last_name,omitempty"`
-// 		PhoneNumber string `json:"phone_number,omitempty"`
-// 		CompanyName string `json:"company_name,omitempty"`
-// 		Department  string `json:"department,omitempty"`
-// 	}
-// 	if err := c.BodyParser(&req); err != nil {
-// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
-// 	}
-
-// 	err = tc.technicianService.UpdateTechnician(uint(techID), req)
-// 	if err != nil {
-// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-// 	}
-
-//		return c.JSON(fiber.Map{"message": "Technician updated successfully"})
-//	}
 func (tc *TechnicianController) DeleteTechnicianHandler(c *fiber.Ctx) error {
 	techIDStr := c.Params("id")
 	techID, err := strconv.Atoi(techIDStr)
@@ -279,4 +250,76 @@ func (tc *TechnicianController) DeleteTechnicianHandler(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"message": "Technician deleted successfully"})
+}
+func (tc *TechnicianController) UploadSealImagesHandler(c *fiber.Ctx) error {
+	techID, ok := c.Locals("tech_id").(uint)
+	if !ok {
+		log.Println("❌ [ERROR] Unauthorized access: No tech_id found")
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
+	log.Println("🔍 [DEBUG] Technician ID:", techID)
+
+	sealNumber := c.FormValue("seal_number")
+	log.Println("📸 [DEBUG] Received seal_number =", sealNumber)
+
+	if sealNumber == "" {
+		log.Println("❌ [ERROR] Missing seal_number in request")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Seal number is required"})
+	}
+
+	var imageURL1, imageURL2 string
+
+	// ✅ Debug ว่ามีไฟล์ถูกอัปโหลดมาจริงไหม + เช็กขนาดไฟล์
+	file1, err1 := c.FormFile("image1")
+	if err1 == nil {
+		log.Println("✅ [DEBUG] Image1 received:", file1.Filename)
+		log.Println("📂 [DEBUG] Image1 size:", file1.Size, "bytes")
+		log.Println("📂 [DEBUG] Image1 MIME type:", file1.Header.Get("Content-Type"))
+
+		if file1.Size > 0 {
+			imageURL1, err1 = uploads.SaveImage(file1)
+			if err1 != nil {
+				log.Println("❌ [ERROR] Failed to save Image1:", err1)
+			}
+		} else {
+			log.Println("⚠️ [WARNING] Image1 is empty (size = 0)")
+		}
+	} else {
+		log.Println("❌ [ERROR] Image1 FormFile error:", err1)
+	}
+
+	file2, err2 := c.FormFile("image2")
+	if err2 == nil {
+		log.Println("✅ [DEBUG] Image2 received:", file2.Filename)
+		log.Println("📂 [DEBUG] Image2 size:", file2.Size, "bytes")
+		log.Println("📂 [DEBUG] Image2 MIME type:", file2.Header.Get("Content-Type"))
+
+		if file2.Size > 0 {
+			imageURL2, err2 = uploads.SaveImage(file2)
+			if err2 != nil {
+				log.Println("❌ [ERROR] Failed to save Image2:", err2)
+			}
+		} else {
+			log.Println("⚠️ [WARNING] Image2 is empty (size = 0)")
+		}
+	} else {
+		log.Println("❌ [ERROR] Image2 FormFile error:", err2)
+	}
+
+	// ✅ เพิ่ม Debug ก่อนส่งไปยัง Service
+	log.Println("📸 [DEBUG] Sending to service -> seal_number:", sealNumber, "image1:", imageURL1, "image2:", imageURL2)
+
+	err := tc.technicianService.UploadSealImages(sealNumber, techID, imageURL1, imageURL2)
+	if err != nil {
+		log.Println("❌ [ERROR] UploadSealImages Error:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	log.Println("✅ [SUCCESS] Image upload completed for seal:", sealNumber)
+	return c.JSON(fiber.Map{
+		"message":     "อัปโหลดรูปสำเร็จ",
+		"seal_number": sealNumber,
+		"image1":      imageURL1,
+		"image2":      imageURL2,
+	})
 }

@@ -6,6 +6,7 @@ import (
 	"log"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Kev2406/PEA/internal/domain/model"
@@ -447,16 +448,24 @@ func (s *SealService) AssignSealToTechnician(sealNumber string, techID uint, iss
 }
 
 func (s *SealService) InstallSeal(sealNumber string, techID uint, serialNumber string) error {
+	// ค้นหาซิลจากฐานข้อมูล
 	seal, err := s.repo.FindByNumber(sealNumber)
 	if err != nil {
 		return errors.New("ไม่พบซิลในระบบ")
 	}
+
+	// ตรวจสอบว่าซิลถูกมอบหมายให้ช่างคนนี้หรือไม่
 	if seal.AssignedToTechnician == nil || *seal.AssignedToTechnician != techID {
 		return errors.New("คุณไม่มีสิทธิ์ติดตั้งซีลนี้")
 	}
-	if seal.Status != "จ่าย" {
+
+	// ✅ เพิ่ม Debug Log และ Trim ช่องว่างใน status
+	log.Printf("🛠 [InstallSeal] sealNumber=%s, DB status='%s'", sealNumber, seal.Status)
+	actualStatus := strings.TrimSpace(seal.Status)
+	if actualStatus != "จ่าย" {
 		return errors.New("ซิลต้องอยู่ในสถานะ 'จ่าย' เท่านั้นจึงจะติดตั้งได้")
 	}
+
 	now := time.Now()
 	seal.Status = "ติดตั้งแล้ว"
 	seal.UsedBy = &techID
