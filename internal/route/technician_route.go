@@ -24,7 +24,7 @@ func SetupTechnicianRoutes(router fiber.Router, techController *controller.Techn
 
 	// ✅ Routes ที่เกี่ยวกับ Seal (เฉพาะช่างที่มีสิทธิ์)
 	protectedTech.Get("/seals", techController.GetAssignedSealsHandler)               // ดูซีลที่ได้รับมอบหมาย
-	protectedTech.Post("/seals/install", techController.InstallSealHandler)           // 🔥 เปลี่ยนเป็น POST รองรับการอัปโหลด
+	protectedTech.Put("/seals/install", techController.InstallSealHandler)            // 🔥 เปลี่ยนเป็น POST รองรับการอัปโหลด
 	protectedTech.Put("/seals/return/:seal_number", techController.ReturnSealHandler) // คืนซีล
 
 	// ✅ **เพิ่ม API สำหรับอัปโหลดรูปซีล (แยกจาก Install)**

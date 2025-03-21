@@ -113,24 +113,32 @@ func (tc *TechnicianController) InstallSealHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 
-	sealNumber := c.FormValue("seal_number")
-	serialNumber := c.FormValue("serial_number")
+	// รับค่า seal_number และ serial_number จาก JSON Body
+	var req struct {
+		SealNumber   string `json:"seal_number"`
+		SerialNumber string `json:"serial_number,omitempty"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		log.Println("❌ [ERROR] Failed to parse request body:", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
 
-	log.Println("🔍 [DEBUG] InstallSealHandler: seal_number =", sealNumber, ", serial_number =", serialNumber)
+	log.Println("🔍 [DEBUG] InstallSealHandler: seal_number =", req.SealNumber, ", serial_number =", req.SerialNumber)
 
-	if sealNumber == "" {
+	if req.SealNumber == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Seal number is required"})
 	}
 
-	err := tc.technicianService.InstallSeal(sealNumber, techID, serialNumber)
+	err := tc.technicianService.InstallSeal(req.SealNumber, techID, req.SerialNumber)
 	if err != nil {
+		log.Println("❌ [ERROR] Install Seal Error:", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	return c.JSON(fiber.Map{
 		"message":       "ติดตั้งซีลสำเร็จ กรุณาอัปโหลดรูปภาพ",
-		"seal_number":   sealNumber,
-		"serial_number": serialNumber,
+		"seal_number":   req.SealNumber,
+		"serial_number": req.SerialNumber,
 	})
 }
 
